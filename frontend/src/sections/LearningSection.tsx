@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { CollapsibleCard } from "../components/CollapsibleCard.tsx";
 import { Field, Input, Select, Textarea } from "../components/Field.tsx";
 import { FormBody, useFormSubmit } from "../components/FormSection.tsx";
+import { SectionNav } from "../components/SectionNav.tsx";
 import { apiFetch } from "../api.ts";
 import type { AppState, KnowledgeCoverage, KnowledgeSearchResult } from "../types.ts";
 
@@ -10,18 +11,30 @@ interface Props {
   onRefresh: () => void;
 }
 
+const TABS = [
+  { id: "cobertura", label: "O que a IA sabe" },
+  { id: "metodos", label: "Métodos e sessões" },
+  { id: "fontes", label: "Fontes de ensino" },
+] as const;
+
 export function LearningSection({ state, onRefresh }: Props) {
+  const [tab, setTab] = useState<string>(TABS[0].id);
   return (
-    <section id="sec-learning" className="border-b border-border px-5 py-6">
-      <h2 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-        Aprendizado
-      </h2>
-      <KnowledgeExplorerCard cataloguedSources={state.learningSources.length} />
-      <LearningMethodCard state={state} onRefresh={onRefresh} />
-      <LearningSessionCard state={state} onRefresh={onRefresh} />
-      <LearningSourceCard onRefresh={onRefresh} />
-      <VideoUploadCard onRefresh={onRefresh} />
-      <LearningMethodSourceCard state={state} onRefresh={onRefresh} />
+    <section id="sec-learning" className="px-5 py-6">
+      <SectionNav tabs={TABS} active={tab} onSelect={setTab} label="Seções de aprendizado" />
+
+      <div hidden={tab !== "cobertura"}>
+        <KnowledgeExplorerCard cataloguedSources={state.learningSources.length} />
+      </div>
+      <div hidden={tab !== "metodos"}>
+        <LearningMethodCard state={state} onRefresh={onRefresh} />
+        <LearningSessionCard state={state} onRefresh={onRefresh} />
+      </div>
+      <div hidden={tab !== "fontes"}>
+        <LearningSourceCard onRefresh={onRefresh} />
+        <VideoUploadCard onRefresh={onRefresh} />
+        <LearningMethodSourceCard state={state} onRefresh={onRefresh} />
+      </div>
     </section>
   );
 }
@@ -131,7 +144,7 @@ function formatKnowledgeTime(seconds: number): string {
 function LearningMethodCard({ state, onRefresh }: Props) {
   const { handleSubmit, busy, msg } = useFormSubmit({ url: "/api/learning-methods", onSuccess: onRefresh });
   return (
-    <CollapsibleCard icon="L" iconKind="method" title="Metodo de aprendizado" wide defaultOpen={false}>
+    <CollapsibleCard icon="L" iconKind="method" title="Método de aprendizado" wide>
       <FormBody onSubmit={handleSubmit} busy={busy} msg={msg} submitLabel="Salvar metodo">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label="Nome" className="sm:col-span-2"><Input name="name" required placeholder="Demo manual EK hunt" /></Field>
@@ -186,7 +199,7 @@ function LearningMethodCard({ state, onRefresh }: Props) {
 function LearningSessionCard({ state, onRefresh }: Props) {
   const { handleSubmit, busy, msg } = useFormSubmit({ url: "/api/learning-sessions", onSuccess: onRefresh });
   return (
-    <CollapsibleCard icon="S" iconKind="session" title="Sessao de ensino" wide defaultOpen={false}>
+    <CollapsibleCard icon="S" iconKind="session" title="Sessão de ensino" wide>
       <FormBody onSubmit={handleSubmit} busy={busy} msg={msg} submitLabel="Salvar sessao">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label="Metodo">
@@ -226,7 +239,7 @@ function LearningSessionCard({ state, onRefresh }: Props) {
 function LearningSourceCard({ onRefresh }: { onRefresh: () => void }) {
   const { handleSubmit, busy, msg } = useFormSubmit({ url: "/api/learning-sources", onSuccess: onRefresh });
   return (
-    <CollapsibleCard icon="F" iconKind="source" title="Fonte de ensino" wide defaultOpen={false}>
+    <CollapsibleCard icon="F" iconKind="source" title="Fonte de ensino" wide>
       <FormBody onSubmit={handleSubmit} busy={busy} msg={msg} submitLabel="Salvar fonte">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label="Nome" className="sm:col-span-2"><Input name="name" required placeholder="Video hunt EK dragons" /></Field>
@@ -279,7 +292,7 @@ function LearningSourceCard({ onRefresh }: { onRefresh: () => void }) {
 function VideoUploadCard({ onRefresh }: { onRefresh: () => void }) {
   const { handleSubmit, busy, msg } = useFormSubmit({ url: "/api/learning-sources/upload-video", onSuccess: onRefresh, upload: true });
   return (
-    <CollapsibleCard icon="V" iconKind="upload" title="Upload de video de hunt" wide defaultOpen={false}>
+    <CollapsibleCard icon="V" iconKind="upload" title="Upload de vídeo de hunt" wide>
       <FormBody onSubmit={handleSubmit} busy={busy} msg={msg} submitLabel="Enviar video">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label="Nome" className="sm:col-span-2">
@@ -322,7 +335,7 @@ function VideoUploadCard({ onRefresh }: { onRefresh: () => void }) {
 function LearningMethodSourceCard({ state, onRefresh }: Props) {
   const { handleSubmit, busy, msg } = useFormSubmit({ url: "/api/learning-method-sources", onSuccess: onRefresh });
   return (
-    <CollapsibleCard icon="V" iconKind="link" title="Vinculo fonte → metodo" wide defaultOpen={false}>
+    <CollapsibleCard icon="V" iconKind="link" title="Vínculo fonte → método" wide>
       <FormBody onSubmit={handleSubmit} busy={busy} msg={msg} submitLabel="Vincular fonte">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label="Metodo">

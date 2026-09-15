@@ -1,5 +1,8 @@
 # Botzin
 
+Mapa das pastas e orientações de manutenção: [Organização do projeto](docs/ORGANIZACAO.md).
+Plano das regras: [PLANO_MUDANCA_REGRAS.md](docs/PLANO_MUDANCA_REGRAS.md).
+
 Projeto TypeScript para estruturar uma IA local responsável por identificar informações visuais da tela do Tibia usando o preview do OBS Studio como fonte de imagem.
 
 ## Objetivo
@@ -626,7 +629,7 @@ O detector ONNX espera uma saida estilo YOLO:
 - `[1, N, 5 + classes]`, comum em YOLOv5 com objectness.
 - `[1, C, N]`, tambem suportado.
 
-O modelo atual em `models/tibia-creatures.onnx` classifica apenas espécies de criaturas. Ele não substitui um modelo separado para distinguir player, NPC e summon. Sem um arquivo ONNX configurado, o sistema retorna erro claro informando que o detector ainda não foi conectado.
+O modelo atual em `models/candidates/tibia-entities-five.onnx` separa `creature`, `npc`, `item`, `effect` e `missile`. A espécie da criatura vem depois, do classificador em `models/tibia-creature-classifier.onnx`, aplicado sobre cada caixa de criatura. Nenhum dos dois distingue player de summon. Sem um arquivo ONNX configurado, o sistema retorna erro claro informando que o detector ainda não foi conectado.
 
 ## Próximos passos técnicos
 
@@ -671,19 +674,35 @@ Uso recomendado:
 - Se a máquina tiver dois IPs úteis, liste ambos em hosts anunciados.
 - O Raspberry deve ficar na mesma rede local ou receber o IP fixo do coordenador/executor.
 
-## Retomar o treinamento limpo em outra máquina
+## Treinar o detector de entidades
 
-O pacote `training-bundles/entity-training-clean-epoch7.tar` é armazenado com Git LFS. Ele contém o dataset isolado de criaturas, NPCs e itens, além dos resultados da execução interrompida na época 7. Os pesos também estão disponíveis em `models/candidates/tibia-entities-clean-epoch7.pt`.
-
-Depois de clonar o repositório na nova máquina:
+O detector reconhece cinco classes — `creature`, `npc`, `item`, `effect`, `missile` — e o dataset é gerado a partir dos assets em `storage/knowledge`, não versionado. Em uma máquina nova:
 
 ```powershell
-git lfs install
-git lfs pull
-New-Item -ItemType Directory -Force storage\knowledge | Out-Null
-tar -xf training-bundles\entity-training-clean-epoch7.tar -C storage\knowledge
 python -m pip install ultralytics pyyaml pillow
-npm run entities:resume:clean -- --device 0 --epochs 100
+npm run entities:dataset:clean
+npm run entities:train:clean -- --device 0 --epochs 100 --batch 8
 ```
 
-Use `--device cpu` se a máquina não tiver uma GPU CUDA. O script confere os manifests e a quantidade de imagens/labels, recria o `data.yaml` com o caminho da máquina atual e exporta o melhor resultado para `models/candidates/tibia-entities-clean-resumed.onnx`.
+Use `--device cpu` se não houver GPU CUDA. O treino chama a validação de fontes antes de começar e exporta para `models/candidates/tibia-entities-five.{onnx,labels.json}`, que é o que a configuração padrão da máquina carrega.
+
+### Isolamento de fontes
+
+Por padrão o dataset é puramente procedural: o manifesto declara `gameplayVideos: 0` e a validação recusa qualquer outra coisa. Para incluir os frames revisados no anotador — que vêm de vídeo de gameplay e portanto quebram esse isolamento:
+
+```powershell
+npm run entities:dataset:human
+npm run entities:train:clean -- --device 0 --epochs 100 --batch 8 --allow-gameplay-frames
+```
+
+O manifesto passa a **contar** os frames de vídeo em vez de afirmar zero, o relatório registra `isolated: false`, e sem `--allow-gameplay-frames` o treino se recusa a rodar. Só as cinco classes do detector são aproveitadas das anotações; painéis de UI, personagem, outros players e corpses são descartados.
+
+### Retomar de um checkpoint
+
+`npm run entities:resume:clean` exige `--checkpoint` explícito, apontando para um `.pt` compatível com as cinco classes do dataset atual:
+
+```powershell
+npm run entities:resume:clean -- --checkpoint models/candidates/tibia-entities-five.pt --device 0 --epochs 100
+```
+
+O script confere os manifests e a contagem de imagens/labels, recria o `data.yaml` com o caminho da máquina atual e exporta para `models/candidates/tibia-entities-five-resumed.onnx`.

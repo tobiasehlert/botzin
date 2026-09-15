@@ -50,6 +50,13 @@ export class ObsPreviewFrameSource implements FrameSource {
     });
     const data = parseImageData(String(screenshot.imageData));
     const metadata = await sharp(data).metadata();
+    if (!metadata.width || !metadata.height || metadata.width < 32 || metadata.height < 32) {
+      throw new Error("OBS returned an invalid frame: check whether the game window and capture source are available.");
+    }
+    const statistics = await sharp(data).stats();
+    if (statistics.channels.slice(0, 3).every(channel => channel.max <= 2)) {
+      throw new Error("OBS returned a black frame: the game may be closed, minimized or unavailable to capture.");
+    }
 
     return {
       id: randomUUID(),

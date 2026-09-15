@@ -27,8 +27,9 @@ Decisoes tomadas na implementacao:
   coletor de telemetria ja usa.
 - A selecao automatica de hunt continua fora, como o plano pede; a regra de
   evolucao apenas avalia a hunt em andamento pela telemetria ja gravada.
-- O classificador de especies foi ligado ao `PerceptionPipeline`; sem o arquivo
-  do modelo ele vira no-op e as criaturas ficam sem especie.
+- A especie vem do `CreatureSpeciesClassifier`, que o `OnnxEntityDetector` ja
+  aplica no fim do `detect()`. Sem o arquivo do modelo ele vira no-op e as
+  criaturas ficam sem especie, entao as regras de catalogo ficam inertes.
 
 Falta para ligar `execute` com seguranca: leitura de HP, mana, stamina e
 supplies na tela (`operationObservation`), mapeamento de coordenadas do frame

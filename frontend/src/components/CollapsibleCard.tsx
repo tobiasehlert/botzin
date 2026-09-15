@@ -25,8 +25,13 @@ interface Props {
   wide?: boolean;
 }
 
-export function CollapsibleCard({ icon, iconKind, title, children, defaultOpen = true, wide = false }: Props) {
-  const wideClass = wide ? "mb-4 last:mb-0" : "";
+// Cards start collapsed: a tab that opens with every form already expanded is the
+// same wall of fields the tabs were meant to break up.
+export function CollapsibleCard({ icon, iconKind, title, children, defaultOpen = false, wide = false }: Props) {
+  // `wide` used to only add a bottom margin, so the cards that ask for it — the
+  // machine config with its ~20 fields — were still squeezed into a 300px grid
+  // column and truncated their inputs. It now actually spans the row.
+  const wideClass = wide ? "col-[1/-1] mb-4 last:mb-0" : "";
 
   return (
     <details

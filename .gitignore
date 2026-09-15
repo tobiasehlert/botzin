@@ -1,4 +1,5 @@
 node_modules/
+.venv/
 dist/
 __pycache__/
 *.pyc
@@ -9,6 +10,7 @@ __pycache__/
 captures/
 models/
 !models/
+models/**
 !models/*.example.json
 logs/
 storage/
@@ -19,3 +21,8 @@ public/assets/
 public/index.html
 training-bundles/*.zip
 models/**/*.lock
+obsidian-vault/
+.token
+
+# Separate local Canary checkout; its Git history belongs to its own repository.
+/local-ot/

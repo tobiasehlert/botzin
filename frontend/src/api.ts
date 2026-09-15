@@ -45,6 +45,42 @@ function authHeaders(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/**
+ * Server-sent events over fetch instead of EventSource: EventSource cannot carry
+ * the bearer header, and putting the token in the query string would leak it into
+ * every access log. Returns a disposer.
+ */
+export function apiStream<T>(path: string, onMessage: (value: T) => void, onError: (message: string) => void): () => void {
+  const controller = new AbortController();
+  void (async () => {
+    try {
+      const response = await fetch(path, { headers: authHeaders(), signal: controller.signal });
+      if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        // SSE frames are separated by a blank line; anything else is a comment.
+        let split = buffer.indexOf("\n\n");
+        while (split !== -1) {
+          const frame = buffer.slice(0, split);
+          buffer = buffer.slice(split + 2);
+          const data = frame.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("");
+          if (data) {
+            try { onMessage(JSON.parse(data) as T); } catch { onError("Evento inválido recebido."); }
+          }
+          split = buffer.indexOf("\n\n");
+        }
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) onError(error instanceof Error ? error.message : "Conexão perdida.");
+    }
+  })();
+  return () => controller.abort();
+}
+
 export async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
   return request<T>(url, {
     ...options,

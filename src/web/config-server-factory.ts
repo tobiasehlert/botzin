@@ -20,6 +20,16 @@ import { TibiaLiveStatusService } from "../knowledge/tibia-live-status.js";
 import { ObsPreviewFrameSource } from "../perception/obs-preview-frame-source.js";
 import { KnowledgeStore } from "../knowledge/knowledge-store.js";
 import { LiveDecisionStore } from "../decision/live-decision-store.js";
+import {
+  controlPaths,
+  isDesiredState,
+  isManagedProcess,
+  MANAGED_PROCESSES,
+  readControl,
+  readStatus,
+  supervisorOnline,
+  writeControl
+} from "../coordination/process-control.js";
 import { parseSessionAnalyser } from "../telemetry/session-analyser-parser.js";
 import { importCreatureAnimation } from "../knowledge/creature-animation-importer.js";
 import { CreatureAnimationBatchJob } from "../knowledge/creature-animation-batch.js";
@@ -154,6 +164,7 @@ export function createConfigServer(
   const jwtService = new JwtService(config);
   const knowledgeStore = new KnowledgeStore(knowledgeDir);
   const liveDecisionStore = new LiveDecisionStore(decisionLogPath);
+  const processControlPaths = controlPaths(decisionLogPath);
   let obsPreview: ObsPreviewFrameSource | null = null;
   let obsPreviewFingerprint = "";
   const creatureAnimationRoot = join(knowledgeDir, "creature-assets");
@@ -196,6 +207,25 @@ export function createConfigServer(
     if (method === "GET" && pathname === "/api/spell-icons") {
       requireRole(user, "viewer");
       sendJson(response, 200, await readSpellIconLinks());
+      return;
+    }
+
+    if (method === "GET" && pathname === "/api/catalog/sprite") {
+      requireRole(user, "viewer");
+      const sprite = catalogSpritePath(
+        requestUrl.searchParams.get("kind"),
+        requestUrl.searchParams.get("id")
+      );
+      if (!sprite) throw httpError(400, "kind must be 'creature' or 'item' and id must be a slug.");
+      const spriteStat = await stat(sprite.path).catch(() => null);
+      if (!spriteStat?.isFile()) throw httpError(404, "Sprite was not found.");
+      response.writeHead(200, {
+        "Content-Type": sprite.type,
+        // Imported assets are content-addressed by sha256 and never rewritten in place.
+        "Cache-Control": "public, max-age=86400",
+        "X-Content-Type-Options": "nosniff"
+      });
+      createReadStream(sprite.path).pipe(response);
       return;
     }
 
@@ -343,6 +373,94 @@ export function createConfigServer(
       if (query.length > 200) throw httpError(400, "Knowledge search query is limited to 200 characters.");
       const limit = Number(requestUrl.searchParams.get("limit") ?? 5);
       sendJson(response, 200, { query, results: await knowledgeStore.search(query, limit) });
+      return;
+    }
+
+    if (method === "GET" && pathname === "/api/process-control") {
+      requireRole(user, "viewer");
+      const [control, status] = await Promise.all([
+        readControl(processControlPaths.control),
+        readStatus(processControlPaths.status)
+      ]);
+      sendJson(response, 200, {
+        desired: control.desired,
+        updatedAt: control.updatedAt,
+        updatedBy: control.updatedBy,
+        supervisorOnline: supervisorOnline(status),
+        observed: status?.observed ?? null
+      });
+      return;
+    }
+
+    if (method === "POST" && pathname === "/api/process-control") {
+      requireRole(user, "operator");
+      const body = await readJson(request) as { process?: unknown; desired?: unknown };
+      if (!isManagedProcess(body.process)) {
+        throw httpError(400, `process must be one of: ${MANAGED_PROCESSES.join(", ")}.`);
+      }
+      if (!isDesiredState(body.desired)) throw httpError(400, "desired must be 'running' or 'stopped'.");
+      const current = await readControl(processControlPaths.control);
+      const next = {
+        desired: { ...current.desired, [body.process]: body.desired },
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.username
+      };
+      await writeControl(processControlPaths.control, next);
+      // The supervisor picks this up on its next poll; the panel shows "aguardando"
+      // until the status file confirms, so nothing here pretends the process is up.
+      sendJson(response, 202, { desired: next.desired, updatedAt: next.updatedAt });
+      return;
+    }
+
+    if (method === "GET" && pathname === "/api/decisions/stream") {
+      requireRole(user, "viewer");
+      const limit = Number(requestUrl.searchParams.get("limit") ?? 30);
+      response.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-store",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no"
+      });
+
+      let closed = false;
+      let lastFingerprint = "";
+      let lastSentAt = 0;
+
+      /**
+       * fs.watch is useless here: the log is written on the Windows host and read
+       * through a Docker bind mount, which does not propagate change events into
+       * the container. So the file is polled — but a stat is all it costs, and the
+       * whole log is only parsed once the size or mtime actually moves.
+       */
+      const push = async (): Promise<void> => {
+        if (closed) return;
+        try {
+          const info = await stat(decisionLogPath).catch(() => null);
+          const fingerprint = info ? `${info.size}:${info.mtimeMs}` : "none";
+          const stale = Date.now() - lastSentAt > 10_000;
+          if (fingerprint === lastFingerprint && !stale) return;
+          lastFingerprint = fingerprint;
+          const snapshot = await liveDecisionStore.snapshot(limit, 5_000);
+          lastSentAt = Date.now();
+          response.write(`data: ${JSON.stringify(snapshot)}\n\n`);
+        } catch {
+          // A transient read error must not kill the stream; the next tick retries.
+        }
+      };
+
+      const pushTimer = setInterval(() => void push(), 300);
+      // Separate and slow: proxies drop an idle stream, but a comment is enough.
+      const keepAliveTimer = setInterval(() => {
+        if (!closed) response.write(": keep-alive\n\n");
+      }, 20_000);
+      const stop = (): void => {
+        closed = true;
+        clearInterval(pushTimer);
+        clearInterval(keepAliveTimer);
+      };
+      request.on("close", stop);
+      response.on("close", stop);
+      await push();
       return;
     }
 
@@ -678,6 +796,28 @@ export function createConfigServer(
 
   async function readSpellIconLinks(): Promise<{ links: readonly SpellIconLink[] }> {
     return { links: (await loadSpellIconLinks()).links };
+  }
+
+  /**
+   * Maps a catalog entry to its imported sprite on disk.
+   *
+   * The identifier comes straight from the query string, so it is matched against
+   * a strict whitelist rather than sanitised: creature folders are lowercase
+   * alphanumeric race slugs and item folders are numeric source ids. Anything
+   * with a separator, a dot or an accent is rejected outright, which is what keeps
+   * `..` from ever reaching join().
+   */
+  function catalogSpritePath(kind: string | null, id: string | null): { path: string; type: string } | null {
+    if (!id) return null;
+    if (kind === "creature" && /^[a-z0-9]{1,64}$/.test(id)) {
+      // The original GIF, not frames/001.png: it carries every frame and the
+      // browser animates it natively, so one request replaces one per frame.
+      return { path: join(knowledgeDir, "creature-assets", id, "source.gif"), type: "image/gif" };
+    }
+    if (kind === "item" && /^[0-9]{1,12}$/.test(id)) {
+      return { path: join(knowledgeDir, "item-assets", id, "sprite.png"), type: "image/png" };
+    }
+    return null;
   }
 
   async function resolveSpellIconPath(spellId: string | null): Promise<string | null> {

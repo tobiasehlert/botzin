@@ -18,7 +18,7 @@ from pathlib import Path
 from ultralytics import YOLO
 
 
-EXPECTED_CLASSES = {"creature": 0, "npc": 1, "item": 2}
+EXPECTED_CLASSES = {"creature": 0, "npc": 1, "item": 2, "effect": 3, "missile": 4}
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,8 +31,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--pretrained-backbone", action="store_true")
-    parser.add_argument("--output-model", type=Path, default=Path("models/candidates/tibia-entities-clean.onnx"))
-    parser.add_argument("--output-labels", type=Path, default=Path("models/candidates/tibia-entities-clean.labels.json"))
+    parser.add_argument("--output-model", type=Path, default=Path("models/candidates/tibia-entities-five.onnx"))
+    parser.add_argument("--output-labels", type=Path, default=Path("models/candidates/tibia-entities-five.labels.json"))
+    parser.add_argument(
+        "--allow-gameplay-frames",
+        action="store_true",
+        help="train on a dataset built with --human-annotations from gameplay frames",
+    )
     return parser.parse_args()
 
 
@@ -46,18 +51,28 @@ def main() -> None:
             str(validator),
             "--knowledge", str(args.knowledge.resolve()),
             "--dataset", str(dataset),
-        ],
+        ]
+        + (["--allow-gameplay-frames"] if args.allow_gameplay_frames else []),
         check=True,
     )
     validation = json.loads((dataset / "source-validation.json").read_text(encoding="utf-8"))
-    if not validation.get("valid") or not validation.get("isolated"):
+    if not validation.get("valid"):
+        raise RuntimeError("Clean source validation did not pass.")
+    if not validation.get("isolated") and not args.allow_gameplay_frames:
         raise RuntimeError("Clean source validation did not pass.")
     manifest = json.loads((dataset / "manifest.json").read_text(encoding="utf-8"))
     if manifest.get("classes") != EXPECTED_CLASSES:
         raise RuntimeError(f"Unexpected dataset classes: {manifest.get('classes')}")
     sources = manifest.get("sources", {})
-    if sources.get("gameplayVideos") != 0 or sources.get("previousCheckpoints") != 0:
+    if sources.get("previousCheckpoints") != 0:
         raise RuntimeError(f"Dataset is not isolated: {sources}")
+    if sources.get("gameplayVideos") != 0 and not args.allow_gameplay_frames:
+        raise RuntimeError(f"Dataset is not isolated: {sources}")
+    if args.allow_gameplay_frames:
+        print(
+            f"[clean-train] isolation off: {sources.get('gameplayVideos')} gameplay frames, "
+            f"{sources.get('humanAnnotatedFrames')} human-annotated samples"
+        )
 
     base = "yolo11n.pt" if args.pretrained_backbone else "yolo11n.yaml"
     run_name = "clean-pretrained" if args.pretrained_backbone else "clean-random-init"

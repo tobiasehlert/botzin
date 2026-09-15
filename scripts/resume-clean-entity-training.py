@@ -11,17 +11,13 @@ import yaml
 from ultralytics import YOLO
 
 
-EXPECTED_CLASSES = {"creature": 0, "npc": 1, "item": 2}
+EXPECTED_CLASSES = {"creature": 0, "npc": 1, "item": 2, "effect": 3, "missile": 4}
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, default=Path("storage/knowledge/entity-training-clean"))
-    parser.add_argument(
-        "--checkpoint",
-        type=Path,
-        default=Path("models/candidates/tibia-entities-clean-epoch7.pt"),
-    )
+    parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--image-size", type=int, default=320)
     parser.add_argument("--batch", type=int, default=16)
@@ -30,7 +26,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-model",
         type=Path,
-        default=Path("models/candidates/tibia-entities-clean-resumed.onnx"),
+        default=Path("models/candidates/tibia-entities-five-resumed.onnx"),
     )
     return parser.parse_args()
 

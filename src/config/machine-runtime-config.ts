@@ -18,8 +18,8 @@ export const DEFAULT_MACHINE_RUNTIME_CONFIG: MachineRuntimeConfig = {
   // benefits from the extra detail.
   obsCaptureWidth: 640,
   detector: "mock",
-  onnxModelPath: "models/tibia-creatures.onnx",
-  onnxLabelsPath: "models/tibia-creatures.labels.json",
+  onnxModelPath: "models/candidates/tibia-entities-five.onnx",
+  onnxLabelsPath: "models/candidates/tibia-entities-five.labels.json",
   onnxInputWidth: 320,
   onnxInputHeight: 320,
   detectionConfidence: 0.35,

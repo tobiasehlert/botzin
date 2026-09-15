@@ -9,42 +9,51 @@ export function StatusSection({ state, statusMsg }: Props) {
   return (
     <section id="sec-status" className="px-5 py-6">
       <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-        Configuracao atual
+        Configuração atual
       </h2>
       {statusMsg && (
         <p className="mb-4 text-[12px] text-muted">{statusMsg}</p>
       )}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
+      {/* items-start: without it every card stretches to the tallest in its row. */}
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] items-start gap-4">
         <ListCard title="Contas" items={state.accounts} render={a => a.name} />
         <ListCard title="Chars" items={state.characters} render={c => `${c.name} (${c.vocation ?? "?"}) lv${c.level ?? "?"}`} />
-        <ListCard title="Maquinas" items={state.machines} render={m => `${m.name} [${m.nodeId}]`} />
+        <ListCard title="Máquinas" items={state.machines} render={m => `${m.name} [${m.nodeId}]`} />
         <ListCard title="Hunts" items={state.hunts} render={h => h.name} />
         <ListCard title="Skills" items={state.skills} render={renderSkill} />
-        <ListCard title="Atribuicoes" items={state.assignments} render={a => renderAssignment(a, state)} />
+        <ListCard title="Atribuições" items={state.assignments} render={a => renderAssignment(a, state)} />
         <ListCard title="Regras de skill" items={state.huntSkillRules} render={r => renderHuntSkillRule(r, state)} />
-        <ListCard title="Metodos de aprendizado" items={state.learningMethods} render={m => renderLearningMethod(m)} />
+        <ListCard title="Métodos de aprendizado" items={state.learningMethods} render={m => renderLearningMethod(m)} />
         <ListCard title="Fontes de ensino" items={state.learningSources} render={renderLearningSource} />
-        <ListCard title="Vinculos fonte-metodo" items={state.learningMethodSources} render={r => renderLearningMethodSource(r, state)} />
-        <ListCard title="Sessoes de ensino" items={state.learningSessions} render={s => renderLearningSession(s, state)} />
+        <ListCard title="Vínculos fonte-método" items={state.learningMethodSources} render={r => renderLearningMethodSource(r, state)} />
+        <ListCard title="Sessões de ensino" items={state.learningSessions} render={s => renderLearningSession(s, state)} />
       </div>
     </section>
   );
 }
 
+/**
+ * Each list scrolls inside its own card. Rendering every row unbounded made the
+ * grid row as tall as its tallest card — 193 skills and 69 hunts turned this page
+ * into ~28 screens of scroll, most of it empty space beside the long lists.
+ */
 function ListCard<T>({ title, items, render }: { title: string; items: T[]; render: (item: T) => string }) {
   return (
-    <div className="overflow-hidden rounded-[10px] border border-border bg-surface">
-      <h3 className="border-b border-border bg-surface-2 px-3.5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+    <div className="flex max-h-[340px] flex-col overflow-hidden rounded-[10px] border border-border bg-surface">
+      <h3 className="flex items-center justify-between gap-2 border-b border-border bg-surface-2 px-3.5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
         {title}
+        <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[10px] tabular-nums text-subtle">{items.length}</span>
       </h3>
       {items.length === 0 ? (
         <p className="px-3.5 py-3 text-[12px] text-subtle">Nenhum item</p>
       ) : (
-        items.map((item, i) => (
-          <div key={i} className="border-b border-border px-3.5 py-2 text-[12px] last:border-b-0">
-            {render(item)}
-          </div>
-        ))
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {items.map((item, i) => (
+            <div key={i} className="border-b border-border px-3.5 py-2 text-[12px] last:border-b-0">
+              {render(item)}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

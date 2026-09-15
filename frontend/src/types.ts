@@ -304,6 +304,14 @@ export interface LiveDecisionRecord {
   status: "observed" | "suggested" | "error";
   decision: string;
   reasons: string[];
+  evaluation?: Array<{
+    source: string;
+    priority: number;
+    band: string;
+    action: string;
+    reason: string;
+    rejectedBecause: string | null;
+  }>;
   perceptionConfidence: number | null;
   frame?: { id: string; width: number; height: number } | null;
   entities?: Array<{

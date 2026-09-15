@@ -88,7 +88,19 @@ button:disabled { cursor: not-allowed; }
 .notification-button span { position: absolute; top: 7px; right: 7px; width: 5px; height: 5px; background: #818cf8; border-radius: 50%; }
 .environment-badge { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; color: #9ba9ba; background: #111823; border: 1px solid var(--color-border); border-radius: 999px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
 .environment-badge i { width: 6px; height: 6px; background: #34d399; border-radius: 50%; box-shadow: 0 0 0 3px rgb(52 211 153 / .1); }
+.topbar-tool { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px; color: var(--color-muted); background: #111823; border: 1px solid var(--color-border); border-radius: 9px; font-size: 12px; font-weight: 600; white-space: nowrap; text-decoration: none; }
+.topbar-tool:hover { color: white; border-color: var(--color-border-2); }
 .mobile-menu { display: none; }
+
+/* pixelated: these are 32-64px client sprites, and the browser's default smoothing
+   turns them into mush at any size. */
+.catalog-sprite { display: grid; flex: 0 0 auto; width: 48px; height: 48px; place-items: center; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden; }
+.catalog-sprite img { max-width: 100%; max-height: 100%; object-fit: contain; image-rendering: pixelated; }
+
+.section-tabs { display: flex; gap: 4px; margin-bottom: 20px; padding-bottom: 2px; overflow-x: auto; border-bottom: 1px solid var(--color-border); }
+.section-tab { position: relative; flex: 0 0 auto; padding: 9px 14px; border: 0; border-bottom: 2px solid transparent; color: var(--color-muted); background: transparent; font-size: 12.5px; font-weight: 600; white-space: nowrap; transition: color .15s ease, border-color .15s ease; }
+.section-tab:hover { color: var(--color-text); }
+.section-tab.is-active { color: var(--color-text); border-bottom-color: var(--color-link); }
 
 .page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex: 0 0 auto; padding: 28px 32px 24px; border-bottom: 1px solid rgb(255 255 255 / .055); }
 .page-header h1 { margin: 0; font-size: clamp(22px, 2vw, 28px); line-height: 1.2; letter-spacing: -.035em; }
@@ -119,17 +131,24 @@ button:disabled { cursor: not-allowed; }
 .skeleton { display: block; min-height: 12px; border-radius: 6px; background: linear-gradient(90deg,#18212d 20%,#222e3d 50%,#18212d 80%); background-size: 200% 100%; animation: shimmer 1.5s infinite; } @keyframes shimmer { to { background-position-x: -200%; } }
 
 .login-layout { display: grid; flex: 1; grid-template-columns: minmax(360px, .9fr) minmax(480px, 1.1fr); min-height: 0; }
-.login-story { position: relative; display: flex; flex-direction: column; justify-content: space-between; padding: clamp(44px, 7vw, 96px); overflow: hidden; background: #0c121c; border-right: 1px solid rgb(255 255 255 / .06); }
+/* Centred, not space-between: the status block that used to anchor the bottom is
+   gone, and a lone heading pinned to the top of a tall column reads as broken. */
+.login-story { position: relative; display: flex; flex-direction: column; justify-content: center; padding: clamp(44px, 7vw, 96px); overflow: hidden; background: #0c121c; border-right: 1px solid rgb(255 255 255 / .06); }
 .login-story::before { position: absolute; right: -180px; bottom: -260px; width: 540px; height: 540px; content: ""; border: 1px solid rgb(129 140 248 / .12); border-radius: 50%; box-shadow: 0 0 0 80px rgb(99 102 241 / .025), 0 0 0 160px rgb(99 102 241 / .02); }
-.login-kicker { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 32px; color: #a5b4fc; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .login-story h1 { position: relative; max-width: 560px; margin: 0; font-size: clamp(38px, 4.3vw, 64px); line-height: 1.08; letter-spacing: -.055em; }
 .login-story h1 span { color: #818cf8; }
 .login-story > div > p { max-width: 500px; margin: 24px 0 0; color: #8997aa; font-size: 15px; line-height: 1.75; }
-.login-status { position: relative; display: flex; align-items: center; gap: 12px; }.login-status > i { width: 8px; height: 8px; background: #34d399; border-radius: 50%; box-shadow: 0 0 0 5px rgb(52 211 153 / .08); }.login-status span { display: flex; flex-direction: column; }.login-status strong { font-size: 11px; }.login-status small { color: var(--color-subtle); font-size: 10px; }
 .login-panel { display: grid; padding: 40px; place-items: center; background: #090d14; }
 .login-card { width: min(100%, 400px); }
 .login-card > .brand-mark { margin-bottom: 28px; }.login-card h2 { margin: 0; font-size: 27px; letter-spacing: -.035em; }.login-subtitle { margin: 8px 0 28px; color: var(--color-muted); font-size: 13px; }.login-fields { display: flex; flex-direction: column; gap: 17px; margin-bottom: 18px; }
-.input-with-icon { position: relative; }.input-with-icon > svg { position: absolute; z-index: 1; top: 12px; left: 12px; color: #66758a; pointer-events: none; }.input-with-icon input { padding-left: 38px !important; }
+/* The icon centres on the input instead of sitting at a fixed 12px from the top:
+   that offset only lined up for one exact input height, so any browser zoom or
+   font fallback pushed it over the text. --icon-gutter keeps the left padding
+   and the icon position derived from the same number. */
+.input-with-icon { position: relative; --icon-gutter: 12px; --icon-size: 16px; }
+.input-with-icon > svg { position: absolute; z-index: 1; top: 50%; left: var(--icon-gutter); width: var(--icon-size); height: var(--icon-size); color: #66758a; transform: translateY(-50%); pointer-events: none; }
+/* The left padding lives further down, right after the global form override that
+   would otherwise win it. */
 .login-error { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; padding: 10px 12px; color: #fca5a5; background: rgb(248 113 113 / .07); border: 1px solid rgb(248 113 113 / .15); border-radius: 8px; font-size: 11px; }.login-help { margin: 16px 0 0; color: var(--color-subtle); font-size: 10px; text-align: center; }
 
 .dashboard-overview { display: grid; grid-template-columns: minmax(240px, .75fr) minmax(0, 2.25fr); overflow: hidden; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 13px; }
@@ -152,6 +171,13 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select { min-height:
 textarea { min-height: 82px; }
 input:hover, textarea:hover, select:hover { border-color: #3a4a61 !important; }
 input:focus, textarea:focus, select:focus { border-color: #6d70e8 !important; outline: 0 !important; box-shadow: 0 0 0 3px rgb(99 102 241 / .13) !important; }
+/* Reserves room for the icon in .input-with-icon. It has to sit after the rule
+   above and repeat the class: that global override is (0,2,1) and !important, so a
+   plain `.input-with-icon input` (0,1,1) loses and its `padding` shorthand resets
+   padding-left to 12px — which is exactly the icon's own position, so the icon
+   lands on top of the first characters. Both the class repetition and the
+   placement are load-bearing; dropping either brings the overlap back. */
+.input-with-icon.input-with-icon input { padding-left: calc(var(--icon-gutter) + var(--icon-size) + 10px) !important; }
 input:disabled, textarea:disabled, select:disabled { opacity: .55; background: #161b24 !important; }
 select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2398a6b9' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px !important; appearance: none; }
 select option { color: var(--color-text); background: var(--color-surface-2); }

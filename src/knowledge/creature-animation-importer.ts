@@ -170,12 +170,78 @@ async function downloadAnimation(fetcher: typeof fetch, url: string): Promise<Bu
   return bytes;
 }
 
+/**
+ * The catalog names creatures in the plural ("Acolytes Of The Cult") while the
+ * wiki files are singular and in sentence case ("Acolyte of the Cult.gif").
+ * MediaWiki only normalises the first character of a title, so the case of every
+ * other word has to match exactly — which is why both the singular and the
+ * sentence-case variants are offered.
+ *
+ * All candidates go into one API call, so extra variants cost no extra requests.
+ */
 function animationTitleCandidates(identity: CreatureAnimationIdentity): string[] {
-  const officialFilename = identity.officialImageUrl ? decodeURIComponent(basename(new URL(identity.officialImageUrl).pathname)) : "";
-  const names = [identity.name, singularName(identity.name), officialFilename.replace(/\.gif$/i, "")]
-    .map((name) => name.trim())
-    .filter(Boolean);
-  return [...new Set(names.map((name) => normalizeFileTitle(`${name}.gif`)))];
+  const officialFilename = officialGifName(identity.officialImageUrl);
+  const base = identity.name.trim();
+  const variants = [
+    base,
+    singularName(base),
+    singularFirstWord(base),
+    singularLastWord(base),
+    sentenceCase(base),
+    sentenceCase(singularFirstWord(base)),
+    sentenceCase(singularLastWord(base)),
+    officialFilename.replace(/\.gif$/i, "")
+  ];
+  return [...new Set(variants.map((name) => name.trim()).filter(Boolean).map((name) => normalizeFileTitle(`${name}.gif`)))];
+}
+
+/**
+ * Wikia image URLs carry the real filename mid-path and end in `/revision/latest`,
+ * so taking the last segment yielded "latest" and threw away the single most
+ * reliable candidate. The `.gif` segment is the one that names the file.
+ */
+function officialGifName(officialImageUrl: string | null): string {
+  if (!officialImageUrl) return "";
+  try {
+    const segments = new URL(officialImageUrl).pathname.split("/").map((part) => decodeURIComponent(part));
+    return segments.reverse().find((part) => part.toLowerCase().endsWith(".gif")) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** Words the wiki keeps lowercase when they are not the first of the title. */
+const MINOR_TITLE_WORDS = new Set(["of", "the", "and", "a", "an", "in", "on", "from", "to", "with"]);
+
+function sentenceCase(value: string): string {
+  return value
+    .split(" ")
+    .map((word, index) => (index > 0 && MINOR_TITLE_WORDS.has(word.toLowerCase()) ? word.toLowerCase() : word))
+    .join(" ");
+}
+
+function singularWord(word: string): string {
+  if (/^men$/i.test(word)) return word.replace(/e/i, "a");
+  if (/[a-z]men$/i.test(word)) return `${word.slice(0, -3)}${word.endsWith("MEN") ? "MAN" : "man"}`;
+  if (/teeth$/i.test(word)) return `${word.slice(0, -5)}tooth`;
+  if (/[a-z]ves$/i.test(word) && word.length > 4) return `${word.slice(0, -3)}f`;
+  if (/ies$/i.test(word) && word.length > 4) return `${word.slice(0, -3)}y`;
+  if (/(ch|sh|ss|x|z)es$/i.test(word)) return word.slice(0, -2);
+  if (/[a-z]i$/i.test(word) && word.length > 3) return `${word.slice(0, -1)}us`;
+  if (/[^s]s$/i.test(word) && word.length > 2) return word.slice(0, -1);
+  return word;
+}
+
+function singularFirstWord(value: string): string {
+  const words = value.split(" ");
+  words[0] = singularWord(words[0] ?? "");
+  return words.join(" ");
+}
+
+function singularLastWord(value: string): string {
+  const words = value.split(" ");
+  words[words.length - 1] = singularWord(words[words.length - 1] ?? "");
+  return words.join(" ");
 }
 
 function singularName(value: string): string {
@@ -201,3 +267,6 @@ function normalizedDelays(value: number[] | undefined, frameCount: number): numb
 async function readManifest(path: string): Promise<CreatureAnimationManifest | null> {
   return readFile(path, "utf8").then((value) => JSON.parse(value) as CreatureAnimationManifest).catch(() => null);
 }
+
+/** Exposed for tests: the title guessing is where the wiki naming rules live. */
+export const animationTitleCandidatesForTest = animationTitleCandidates;

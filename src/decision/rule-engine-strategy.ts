@@ -13,10 +13,11 @@ import { ActionValidator, DEFAULT_VALIDATOR_OPTIONS, type ActionValidatorOptions
 import { buildGameState, DEFAULT_TARGETING_POLICY, type GameState, type TargetingPolicy } from "./game-state.js";
 import { policyFromRunSnapshot, type HuntOperationPolicy } from "./hunt-operation-policy.js";
 import { decide, type RuleDecision } from "./rule-engine.js";
-import { createCombatRules, DEFAULT_COMBAT_OPTIONS, type CombatOptions } from "./rules/combat-rules.js";
+import { createCombatRules, type CombatOptions } from "./rules/combat-rules.js";
 import { createItemRules, DEFAULT_LOOT_POLICY, type LootPolicy } from "./rules/item-rules.js";
 import { createLevelingRules, type LevelingPolicy } from "./rules/leveling-rules.js";
 import { createSurvivalRules, survivalThresholdsFrom, type SurvivalThresholds } from "./rules/survival-rules.js";
+import { DEFAULT_VOCATION_PROFILE, vocationProfile, type VocationProfile } from "./vocation-profiles.js";
 import type { Strategy } from "./strategy.js";
 
 export interface RuleEngineLoadout {
@@ -35,7 +36,10 @@ export interface RuleEngineLoadout {
 }
 
 /** Everything the rules read from the run snapshot, in one place. */
-export function decisionSettingsFrom(runSnapshotJson: string | null): {
+export function decisionSettingsFrom(
+  runSnapshotJson: string | null,
+  profile: VocationProfile = DEFAULT_VOCATION_PROFILE
+): {
   targeting: TargetingPolicy;
   loot: LootPolicy;
   leveling: LevelingPolicy;
@@ -67,7 +71,7 @@ export function decisionSettingsFrom(runSnapshotJson: string | null): {
       minimumProfit: typeof leveling.minimumProfit === "number" ? leveling.minimumProfit : null,
       requireHuntLevel: leveling.requireHuntLevel !== false
     },
-    maxCreatures: positiveNumber(creatures.maxCreatures) ?? DEFAULT_COMBAT_OPTIONS.maxCreatures
+    maxCreatures: positiveNumber(creatures.maxCreatures) ?? profile.maxCreatures
   };
 }
 
@@ -82,7 +86,10 @@ export function loadoutFromSnapshot(
     .sort((left, right) => (left.status === right.status ? left.priority - right.priority : left.status === "active" ? -1 : 1))[0] ?? null;
   const character = snapshot.characters.find((candidate) => candidate.id === assignment?.characterId && candidate.enabled) ?? null;
   const hunt = snapshot.hunts.find((candidate) => candidate.id === assignment?.huntId && candidate.enabled) ?? null;
-  const settings = decisionSettingsFrom(runSnapshotJson);
+  // The vocation baseline is the default the run snapshot overrides, so a
+  // character with no tuning yet still heals and flees like its vocation should.
+  const profile = vocationProfile(character?.vocation);
+  const settings = decisionSettingsFrom(runSnapshotJson, profile);
   return {
     character,
     hunt,
@@ -90,7 +97,7 @@ export function loadoutFromSnapshot(
     bindings: snapshot.clientSpellBindings.filter((binding) => binding.enabled && binding.characterId === character?.id),
     huntSkillRules: snapshot.huntSkillRules.filter((rule) => rule.enabled && (hunt === null || rule.huntId === hunt.id)),
     telemetry: snapshot.huntTelemetry.filter((sample) => character === null || sample.characterId === character.id),
-    survival: survivalThresholdsFrom(runSnapshotJson),
+    survival: survivalThresholdsFrom(runSnapshotJson, profile.survival),
     combat: { huntId: hunt?.id ?? null, maxCreatures: settings.maxCreatures },
     targeting: settings.targeting,
     // The refill thresholds keep coming from the same policy the run collector

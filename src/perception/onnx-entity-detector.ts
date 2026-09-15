@@ -72,7 +72,10 @@ export class OnnxEntityDetector implements EntityDetector {
   private async createSession(): Promise<ort.InferenceSession> {
     const modelPath = resolve(this.config.onnxModelPath);
     await access(modelPath).catch(() => {
-      throw new Error(`ONNX model not found at "${modelPath}". Train/export a Tibia entity model and update BOTZIN_ONNX_MODEL_PATH.`);
+      throw new Error(
+        `ONNX model not found at "${modelPath}". Train/export a Tibia entity model ` +
+        `and point the machine to it in the web panel (Entidades > modelo ONNX).`
+      );
     });
     return ort.InferenceSession.create(modelPath);
   }

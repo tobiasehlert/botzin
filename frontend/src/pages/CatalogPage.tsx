@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { apiFetch } from "../api.ts";
+import { apiFetch, apiFetchBlob } from "../api.ts";
 import type { CatalogPage, CreatureCatalogRecord, GameKnowledgeCoverage, GameKnowledgeRecord, ItemCatalogRecord, TibiaLiveStatus } from "../types.ts";
 import { Search } from "lucide-react";
 import { EmptyState, ErrorState, LoadingState, PageHeader } from "../components/ui.tsx";
@@ -127,7 +127,9 @@ export function CatalogPage() {
         {status.phase !== "ready" && !page?.items.length ? (
           status.phase === "loading" ? <LoadingState label={statusLabel(status)} /> : status.phase === "empty" ? <EmptyState description="Tente ajustar os termos da busca ou selecionar outra categoria." /> : <ErrorState message={status.message} />
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
+          /* items-start so a short entry does not inherit the height of the
+             longest creature description sitting next to it. */
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] items-start gap-3">
             {page?.items.map((record) => kind === "creatures"
               ? <CreatureCard key={record.id} creature={record as CreatureCatalogRecord} />
               : kind === "items"
@@ -169,11 +171,44 @@ function KnowledgeCard({ record }: { record: GameKnowledgeRecord }) {
   );
 }
 
+/**
+ * The sprite endpoint needs the bearer token, and <img src> cannot send headers,
+ * so the bytes come through the same blob + object URL route SpellIconGrid uses.
+ * The box is reserved even before the image lands, otherwise every card jumps as
+ * the sprites arrive.
+ */
+function CatalogSprite({ kind, id }: { kind: "creature" | "item"; id: string }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    let objectUrl = "";
+    let disposed = false;
+    void apiFetchBlob(`/api/catalog/sprite?kind=${kind}&id=${encodeURIComponent(id)}`)
+      .then((blob) => {
+        if (disposed) return;
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      // Assets are imported separately from the catalog, so plenty of entries have
+      // none. A missing sprite is normal and leaves the empty frame in place.
+      .catch(() => undefined);
+    return () => { disposed = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [kind, id]);
+
+  return (
+    <span className="catalog-sprite">
+      {url && <img src={url} alt="" aria-hidden loading="lazy" />}
+    </span>
+  );
+}
+
 function CreatureCard({ creature }: { creature: CreatureCatalogRecord }) {
   return (
     <article className="rounded-[9px] border border-border bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
-        <div><h2 className="text-[14px] font-semibold">{creature.name}</h2><p className="text-[11px] text-subtle">{creature.race}</p></div>
+        <div className="flex min-w-0 items-start gap-3">
+          <CatalogSprite kind="creature" id={creature.race} />
+          <div className="min-w-0"><h2 className="text-[14px] font-semibold">{creature.name}</h2><p className="text-[11px] text-subtle">{creature.race}</p></div>
+        </div>
         <span className="rounded bg-surface-3 px-2 py-1 text-[11px] text-muted">{creature.hitpoints.toLocaleString("pt-BR")} HP · {creature.experience.toLocaleString("pt-BR")} XP</span>
       </div>
       {creature.weakness.length > 0 && <Line label="Fraco contra" value={creature.weakness.join(", ")} />}
@@ -196,7 +231,10 @@ function CreatureCard({ creature }: { creature: CreatureCatalogRecord }) {
 function ItemCard({ item }: { item: ItemCatalogRecord }) {
   return (
     <article className="rounded-[9px] border border-border bg-surface p-4">
-      <h2 className="text-[14px] font-semibold">{item.name}</h2>
+      <div className="flex items-start gap-3">
+        <CatalogSprite kind="item" id={String(item.sourceId)} />
+        <h2 className="min-w-0 text-[14px] font-semibold">{item.name}</h2>
+      </div>
       <Line label="Categoria" value={item.categoryName ?? "Não informada"} />
       <Line label="Tipo" value={[item.primaryType, item.secondaryType].filter(Boolean).join(" · ") || "Não informado"} />
       {item.objectClass && <Line label="Classe" value={item.objectClass} />}

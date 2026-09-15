@@ -48,6 +48,20 @@ export const PRIORITY = {
   optional: 50
 } as const;
 
+/**
+ * Which band a proposal landed in. Rules shift their own priority inside a band
+ * (`PRIORITY.emergency + 40`), so the band has to be derived from the number
+ * rather than declared, or the tree would group by the nominal band and put a
+ * boosted rule in the wrong place.
+ */
+export function bandOf(priority: number): keyof typeof PRIORITY {
+  const bands = Object.entries(PRIORITY).sort((left, right) => right[1] - left[1]);
+  for (const [name, floor] of bands) {
+    if (priority >= floor) return name as keyof typeof PRIORITY;
+  }
+  return "optional";
+}
+
 /** Proposals only live for the state that produced them. */
 export function propose(
   source: string,
@@ -98,6 +112,34 @@ export function decide(
       ? ["Nenhuma regra propôs ação para este estado."]
       : rejected.map(describeRejection)
   };
+}
+
+/**
+ * Flattens a decision into the ordered list the panel draws as a tree: the winner
+ * first, then every proposal that lost, each with why. `decide` already computes
+ * this; without exposing it the record keeps only the concatenated strings and the
+ * structure has to be re-parsed out of prose.
+ */
+export function evaluationOf(decision: RuleDecision): readonly {
+  source: string;
+  priority: number;
+  band: string;
+  action: string;
+  reason: string;
+  rejectedBecause: string | null;
+}[] {
+  const describe = (proposal: ActionProposal, rejectedBecause: string | null) => ({
+    source: proposal.source,
+    priority: proposal.priority,
+    band: bandOf(proposal.priority),
+    action: proposal.action.kind,
+    reason: proposal.reason,
+    rejectedBecause
+  });
+  return [
+    ...(decision.accepted ? [describe(decision.accepted, null)] : []),
+    ...decision.rejected.map((entry) => describe(entry.proposal, entry.reason))
+  ].sort((left, right) => right.priority - left.priority);
 }
 
 function safeEvaluate(rule: DecisionRule, state: GameState): ActionProposal | null {

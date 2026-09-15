@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Botzin — Anotação visual</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>.active-question{margin-top:10px;padding:10px;border:1px solid #3d8b70;border-radius:8px;background:#101d19}.active-question strong{display:block;margin-bottom:9px}.question-actions{display:grid;gap:6px}.question-actions button,.active-question textarea,.active-question>button{width:100%}.active-question label{display:block;color:#a8b2bf;font-size:12px;margin:10px 0 5px}.active-question textarea{resize:vertical;border:1px solid #35404e;background:#0c1117;color:#e8edf3;border-radius:7px;padding:8px}.active-question .danger{margin-top:0}.canvas-wrap{display:block!important;overflow:auto!important}.canvas-wrap canvas{display:block;margin:auto;max-width:none;max-height:none}.zoom-controls{display:flex;align-items:center;gap:5px;margin-right:12px}.zoom-controls button{padding:7px 11px}.zoom-controls span{min-width:48px;text-align:center;font-size:13px;color:#a8b2bf}</style>
+</head>
+<body>
+  <header>
+    <div><span class="eyebrow">BOTZIN • DATASET REAL</span><h1>Anotação visual</h1></div>
+    <div class="progress"><strong id="progress">0 / 0</strong><span id="saved">Carregando…</span></div>
+  </header>
+  <main>
+    <section class="workspace">
+      <div class="canvas-wrap"><canvas id="canvas"></canvas><div id="empty">Carregando frame…</div></div>
+      <div class="transport"><div class="zoom-controls"><button id="zoomOut" title="Diminuir">−</button><button id="zoomReset" title="Voltar ao tamanho normal"><span id="zoomValue">100%</span></button><button id="zoomIn" title="Aumentar">+</button></div><button id="prev">← Anterior</button><button id="save" class="primary">Salvar e avançar <kbd>Enter</kbd></button><button id="next">Próximo →</button></div>
+    </section>
+    <aside>
+      <div class="panel">
+        <h2>Classe da próxima caixa</h2>
+        <div id="classes" class="classes"></div>
+        <button id="applyClass" style="width:100%;margin-top:10px" disabled>Aplicar à caixa selecionada</button>
+        <p class="hint">Arraste para criar. Clique numa caixa e arraste um dos quatro cantos para redimensionar. Use <kbd>Del</kbd> para remover.</p>
+      </div>
+      <div class="panel">
+        <h2>Assistente de IA</h2>
+        <p id="trainingStatus" class="hint">Aprendizado contínuo: verificando…</p>
+        <label class="check"><input id="aiEnabled" type="checkbox" checked> Analisar ao abrir o frame</label>
+        <p id="aiStatus" class="hint">Aguardando frame…</p>
+        <div id="activeQuestion" class="active-question" hidden>
+          <strong id="questionText"></strong>
+          <div class="question-actions">
+            <button id="answerCorrect" class="primary">✓ Correta</button>
+            <button id="answerReclassify">Trocar pela classe escolhida</button>
+            <button id="answerAdjust">Aceitar e ajustar caixa</button>
+            <button id="answerUnsure">Não consigo responder agora</button>
+            <button id="answerWrong" class="danger">✕ Não existe</button>
+          </div>
+          <label for="feedbackText">Explique o erro, se quiser</label>
+          <textarea id="feedbackText" rows="2" placeholder="Ex.: isso é um corpo, não uma criatura viva"></textarea>
+          <button id="sendFeedback">Enviar comentário</button>
+        </div>
+        <button id="acceptSuggestions" style="width:100%;margin-top:8px" disabled>Aceitar todas sem revisar</button>
+        <button id="clearSuggestions" style="width:100%;margin-top:7px" disabled>Ocultar sugestões</button>
+        <label class="check" style="margin-top:10px"><input id="cleanView" type="checkbox"> Ver imagem limpa, sem nenhuma caixa</label>
+        <p class="hint">A caixa tracejada mais forte é a pergunta atual. Sua resposta será registrada para o próximo treino.</p>
+      </div>
+      <div id="itemCategoryWrap" class="panel item-panel">
+        <h2>Tipos de item</h2><label for="itemCategory">Selecione “item” e escolha o tipo</label><select id="itemCategory" disabled></select>
+        <p class="hint">A categoria fica vinculada à caixa de item selecionada.</p>
+      </div>
+      <div class="panel"><h2>Frame</h2><label class="check"><input id="ignored" type="checkbox"> Ignorar este frame</label><button id="clear" class="danger">Apagar todas as caixas</button></div>
+      <div class="panel"><h2>Fila</h2><button id="reviewMixed" class="primary" style="width:100%">Ativar fila mista</button><p id="sourceKind" class="hint"></p><p id="mixedStatus" class="hint"></p></div>
+      <div class="panel"><h2>Caixas <span id="boxCount">0</span></h2><div id="boxList" class="box-list"></div></div>
+    </aside>
+  </main>
+  <div id="toast"></div><script type="module" src="/app.js"></script>
+</body>
+</html>

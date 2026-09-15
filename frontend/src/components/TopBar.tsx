@@ -1,4 +1,7 @@
-import { Bell, Bot, Menu, RefreshCw, Search } from "lucide-react";
+import { Bell, Bot, Menu, PenLine, RefreshCw, Search } from "lucide-react";
+
+/** The annotation UI is a separate host service (`npm run annotations:dev`). */
+export const ANNOTATION_UI_URL = `http://${globalThis.location?.hostname ?? "127.0.0.1"}:4310`;
 import type { User } from "../types.ts";
 import type { PageId } from "./Sidebar.tsx";
 
@@ -14,6 +17,9 @@ export function TopBar({ user, onRefresh, currentPage = "dashboard", onMenu }: P
       </div>
       <div className="topbar-actions">
         <label className="global-search"><Search size={16} /><input aria-label="Busca global" placeholder="Buscar no sistema..." /><kbd>⌘ K</kbd></label>
+        <a className="topbar-tool" href={ANNOTATION_UI_URL} target="_blank" rel="noreferrer" title="Abrir o anotador humano (porta 4310)">
+          <PenLine size={15} />Anotação humana
+        </a>
         <button className="icon-button" onClick={onRefresh} title="Atualizar dados" aria-label="Atualizar dados"><RefreshCw size={17} /></button>
         <button className="icon-button notification-button" title="Notificações" aria-label="Notificações"><Bell size={17} /><span /></button>
         <span className="environment-badge"><i />Local</span>

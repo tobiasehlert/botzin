@@ -2,6 +2,7 @@ import { CollapsibleCard } from "../components/CollapsibleCard.tsx";
 import { useState } from "react";
 import { Field, GroupLabel, Input, Select, Textarea } from "../components/Field.tsx";
 import { FormBody, useFormSubmit } from "../components/FormSection.tsx";
+import { SectionNav } from "../components/SectionNav.tsx";
 import { SpellIconGrid } from "../components/SpellIconGrid.tsx";
 import type { AppState } from "../types.ts";
 
@@ -10,20 +11,38 @@ interface Props {
   onRefresh: () => void;
 }
 
+const TABS = [
+  { id: "cadastros", label: "Contas e chars" },
+  { id: "maquinas", label: "Máquinas" },
+  { id: "hunts", label: "Hunts e skills" },
+  { id: "magias", label: "Magias" },
+] as const;
+
 export function EntitiesSection({ state, onRefresh }: Props) {
+  const [tab, setTab] = useState<string>(TABS[0].id);
+  const grid = "grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4";
   return (
-    <section id="sec-entities" className="border-b border-border px-5 py-6">
-      <h2 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-        Entidades base
-      </h2>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
+    <section id="sec-entities" className="px-5 py-6">
+      <SectionNav tabs={TABS} active={tab} onSelect={setTab} label="Seções de entidades" />
+
+      <div className={grid} hidden={tab !== "cadastros"}>
         <AccountCard onRefresh={onRefresh} />
         <CharCard state={state} onRefresh={onRefresh} />
+      </div>
+
+      {/* Alone in its tab so the ~20 machine fields get the full width. */}
+      <div className={grid} hidden={tab !== "maquinas"}>
         <MachineCard state={state} onRefresh={onRefresh} />
+      </div>
+
+      <div className={grid} hidden={tab !== "hunts"}>
         <HuntCard onRefresh={onRefresh} />
         <SkillCard onRefresh={onRefresh} />
+      </div>
+
+      <div className={grid} hidden={tab !== "magias"}>
         <ClientSpellBindingCard state={state} onRefresh={onRefresh} />
-        <CollapsibleCard icon="✨" iconKind="skill" title="Ícones das magias" defaultOpen={false} wide>
+        <CollapsibleCard icon="✨" iconKind="skill" title="Ícones das magias" wide>
           <SpellIconGrid />
         </CollapsibleCard>
       </div>
@@ -154,8 +173,8 @@ function MachineCard({ state, onRefresh }: Props) {
         <GroupLabel>Detector local</GroupLabel>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Field label="Detector"><Select name="detector" defaultValue={runtime?.detector ?? "onnx"}><option value="onnx">ONNX</option><option value="mock">Simulação</option></Select></Field>
-        <Field label="Modelo ONNX"><Input name="onnxModelPath" defaultValue={runtime?.onnxModelPath ?? "models/tibia-creatures.onnx"} /></Field>
-        <Field label="Labels ONNX"><Input name="onnxLabelsPath" defaultValue={runtime?.onnxLabelsPath ?? "models/tibia-creatures.labels.json"} /></Field>
+        <Field label="Modelo ONNX"><Input name="onnxModelPath" defaultValue={runtime?.onnxModelPath ?? "models/candidates/tibia-entities-five.onnx"} /></Field>
+        <Field label="Labels ONNX"><Input name="onnxLabelsPath" defaultValue={runtime?.onnxLabelsPath ?? "models/candidates/tibia-entities-five.labels.json"} /></Field>
         <Field label="Largura"><Input name="onnxInputWidth" type="number" defaultValue={runtime?.onnxInputWidth ?? 320} /></Field>
         <Field label="Altura"><Input name="onnxInputHeight" type="number" defaultValue={runtime?.onnxInputHeight ?? 320} /></Field>
         <Field label="Confiança (0–1)"><Input name="detectionConfidence" type="number" min="0" max="1" step="0.01" defaultValue={runtime?.detectionConfidence ?? 0.35} /></Field>

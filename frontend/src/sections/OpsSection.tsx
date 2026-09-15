@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CollapsibleCard } from "../components/CollapsibleCard.tsx";
 import { Field, GroupLabel, Input, Select, Textarea } from "../components/Field.tsx";
 import { FormBody, useFormSubmit } from "../components/FormSection.tsx";
-import { apiFetch, apiFetchBlob, apiPost } from "../api.ts";
+import { SectionNav } from "../components/SectionNav.tsx";
+import { apiFetch, apiFetchBlob, apiPost, apiStream } from "../api.ts";
 import type { AppState, HuntTelemetry, LiveDecisionRecord, LiveDecisionSnapshot } from "../types.ts";
 
 interface Props {
@@ -10,17 +11,124 @@ interface Props {
   onRefresh: () => void;
 }
 
-export function OpsSection({ state, onRefresh }: Props) {
+const TABS = [
+  { id: "ao-vivo", label: "Ao vivo" },
+  { id: "coleta", label: "Coleta e telemetria" },
+  { id: "atribuicoes", label: "Atribuições" },
+  { id: "regras", label: "Regras de skill" },
+] as const;
+
+interface ProcessControlSnapshot {
+  desired: Record<string, "running" | "stopped">;
+  supervisorOnline: boolean;
+  observed: Record<string, { state: string; pid: number | null; error: string | null }> | null;
+}
+
+const MANAGED = [
+  { id: "agent", label: "Agente", hint: "Percepção e decisões no cliente do Tibia" },
+  { id: "annotator", label: "Anotação humana", hint: "Servidor do anotador na porta 4310" },
+] as const;
+
+/**
+ * The panel serves from a container and cannot spawn host processes, so these
+ * buttons only record a desired state. The supervisor running on the host is what
+ * actually starts and stops things — when it is down, the buttons say so instead
+ * of pretending the click worked.
+ */
+function ProcessControlPanel() {
+  const [snapshot, setSnapshot] = useState<ProcessControlSnapshot | null>(null);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let disposed = false;
+    const refresh = async () => {
+      try {
+        const value = await apiFetch<ProcessControlSnapshot>("/api/process-control");
+        if (!disposed) { setSnapshot(value); setError(""); }
+      } catch (err) {
+        if (!disposed) setError(err instanceof Error ? err.message : "Falha ao ler o controle de processos.");
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 2_000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, []);
+
+  const toggle = async (id: string, desired: "running" | "stopped") => {
+    setBusy(id);
+    try {
+      await apiPost("/api/process-control", { process: id, desired });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao enviar o comando.");
+    } finally {
+      setBusy("");
+    }
+  };
+
   return (
-    <section id="sec-ops" className="border-b border-border px-5 py-6">
-      <h2 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-        Operacoes
-      </h2>
-      <LiveDecisionCard />
-      <CharacterRunCard state={state} onRefresh={onRefresh} />
-      <HuntTelemetryCard state={state} onRefresh={onRefresh} />
-      <AssignmentCard state={state} onRefresh={onRefresh} />
-      <HuntSkillRuleCard state={state} onRefresh={onRefresh} />
+    <div className="mt-4 rounded-[6px] border border-border bg-bg p-3">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className={`h-2 w-2 rounded-full ${snapshot?.supervisorOnline ? "bg-icon-skill" : "bg-icon-machine"}`} />
+        <span className="text-[12px] font-semibold">
+          {snapshot?.supervisorOnline ? "Supervisor ativo nesta máquina" : "Supervisor desligado"}
+        </span>
+        {!snapshot?.supervisorOnline && (
+          <span className="text-[11px] text-muted">
+            Rode <code className="rounded-[3px] bg-surface-2 px-1.5 py-0.5">npm run supervisor</code> no host — sem ele os botões não têm efeito.
+          </span>
+        )}
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        {MANAGED.map((item) => {
+          const wanted = snapshot?.desired?.[item.id] ?? "stopped";
+          const actual = snapshot?.observed?.[item.id];
+          const on = wanted === "running";
+          const pending = snapshot?.supervisorOnline && actual && actual.state !== (on ? "running" : "stopped");
+          return (
+            <div key={item.id} className="flex items-center gap-3 rounded-[6px] border border-border bg-surface px-3 py-2.5">
+              <div className="min-w-0 flex-1">
+                <div className="text-[12.5px] font-semibold">{item.label}</div>
+                <div className="text-[11px] text-muted">
+                  {actual?.error ? <span className="text-red-300">{actual.error}</span>
+                    : pending ? (on ? "Iniciando..." : "Encerrando...")
+                    : actual?.state === "running" ? `Rodando (pid ${actual.pid ?? "?"})`
+                    : item.hint}
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={busy === item.id || !snapshot}
+                onClick={() => void toggle(item.id, on ? "stopped" : "running")}
+                className={`rounded-[6px] border px-3 py-1.5 text-[11px] font-semibold disabled:opacity-50 ${
+                  on ? "border-border text-muted hover:text-text" : "border-accent bg-accent text-white"
+                }`}
+              >
+                {on ? "Desligar" : "Ligar"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {error && <p className="mt-2 text-[11px] text-red-300">{error}</p>}
+    </div>
+  );
+}
+
+export function OpsSection({ state, onRefresh }: Props) {
+  const [tab, setTab] = useState<string>(TABS[0].id);
+  return (
+    <section id="sec-ops" className="px-5 py-6">
+      <SectionNav tabs={TABS} active={tab} onSelect={setTab} label="Seções de operações" />
+
+      <div hidden={tab !== "ao-vivo"}><LiveDecisionCard /></div>
+      <div hidden={tab !== "coleta"}>
+        <CharacterRunCard state={state} onRefresh={onRefresh} />
+        <HuntTelemetryCard state={state} onRefresh={onRefresh} />
+      </div>
+      <div hidden={tab !== "atribuicoes"}><AssignmentCard state={state} onRefresh={onRefresh} /></div>
+      <div hidden={tab !== "regras"}><HuntSkillRuleCard state={state} onRefresh={onRefresh} /></div>
     </section>
   );
 }
@@ -197,31 +305,90 @@ function parseCreatureCount(value: string | null): string {
   }
 }
 
+const BAND_LABELS: Record<string, string> = {
+  emergency: "Emergência",
+  survival: "Sobrevivência",
+  combat: "Combate",
+  positioning: "Posicionamento",
+  loot: "Loot",
+  optional: "Opcional"
+};
+
+type Evaluated = NonNullable<LiveDecisionRecord["evaluation"]>[number];
+
+/**
+ * The engine is a priority ladder, not a branching tree: every rule proposes for
+ * the same state, they are sorted by priority, and the first one the validator
+ * accepts wins. So the useful picture is the ladder itself — which band each
+ * proposal landed in, which one won, and why each of the others lost.
+ */
+function DecisionTree({ evaluation }: { evaluation: readonly Evaluated[] }) {
+  const bands = evaluation.reduce<Map<string, Evaluated[]>>((groups, entry) => {
+    const list = groups.get(entry.band) ?? [];
+    list.push(entry);
+    groups.set(entry.band, list);
+    return groups;
+  }, new Map());
+
+  return (
+    <div className="mt-4">
+      <div className="flex items-baseline gap-2">
+        <span className="text-[11px] uppercase tracking-[0.06em] text-muted">Árvore de decisão</span>
+        <span className="text-[11px] text-subtle">{evaluation.length} proposta(s) avaliada(s)</span>
+      </div>
+      <div className="mt-2 space-y-3">
+        {[...bands].map(([band, entries]) => (
+          <div key={band}>
+            <div className="mb-1 flex items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-subtle">
+                {BAND_LABELS[band] ?? band}
+              </span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+            <ul className="space-y-1">
+              {entries.map((entry) => {
+                const won = entry.rejectedBecause === null;
+                return (
+                  <li
+                    key={`${entry.source}-${entry.priority}`}
+                    className={`flex flex-wrap items-baseline gap-2 rounded-[6px] border px-2.5 py-1.5 text-[12px] ${
+                      won ? "border-icon-skill/40 bg-icon-skill/5" : "border-border bg-surface"
+                    }`}
+                  >
+                    <span className={won ? "text-icon-skill" : "text-subtle"}>{won ? "✓" : "✕"}</span>
+                    <span className="font-semibold">{entry.source}</span>
+                    <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[10px] text-muted">{entry.action}</span>
+                    <span className="text-[10px] tabular-nums text-subtle">p{entry.priority}</span>
+                    <span className="w-full text-[11px] text-muted">{entry.reason}</span>
+                    {!won && <span className="w-full text-[11px] text-subtle">↳ {entry.rejectedBecause}</span>}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function LiveDecisionCard() {
   const [snapshot, setSnapshot] = useState<LiveDecisionSnapshot>({ active: false, lastSeenAt: null, records: [] });
   const [message, setMessage] = useState("Aguardando o monitor de decisões...");
 
   useEffect(() => {
-    let disposed = false;
-    const refresh = async (): Promise<void> => {
-      try {
-        const value = await apiFetch<LiveDecisionSnapshot>("/api/decisions/live?limit=30");
-        if (!disposed) {
-          setSnapshot(value);
-          setMessage(value.records.length === 0
-            ? "Inicie o agente com npm run dev para receber decisões."
-            : value.active ? "Recebendo decisões em tempo real." : "O agente parou de enviar decisões.");
-        }
-      } catch (error) {
-        if (!disposed) setMessage(error instanceof Error ? error.message : "Falha ao carregar decisões.");
-      }
-    };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 2_000);
-    return () => {
-      disposed = true;
-      window.clearInterval(timer);
-    };
+    // Pushed by the server as the agent appends, instead of polled every 2s: the
+    // decision now reaches the screen as soon as it is written.
+    return apiStream<LiveDecisionSnapshot>(
+      "/api/decisions/stream?limit=30",
+      (value) => {
+        setSnapshot(value);
+        setMessage(value.records.length === 0
+          ? "Nenhuma decisão ainda. Ligue o agente abaixo."
+          : value.active ? "Recebendo decisões em tempo real." : "O agente parou de enviar decisões.");
+      },
+      (message) => setMessage(message)
+    );
   }, []);
 
   const latest = snapshot.records[0];
@@ -233,6 +400,7 @@ function LiveDecisionCard() {
         <span className="text-[12px] text-muted">{message}</span>
         {snapshot.lastSeenAt && <span className="ml-auto text-[11px] text-muted">Último ciclo: {formatDecisionTime(snapshot.lastSeenAt)}</span>}
       </div>
+      <ProcessControlPanel />
 
       {latest && (
         <div className="mt-4 rounded-[6px] border border-border bg-bg p-4">
@@ -259,13 +427,17 @@ function LiveDecisionCard() {
             <DecisionMetric label="Confiança visual" value={latest.perceptionConfidence === null ? "—" : `${Math.round(latest.perceptionConfidence * 100)}%`} />
           </div>
 
-          <div className="mt-4">
-            <div className="text-[11px] uppercase tracking-[0.06em] text-muted">Motivos</div>
-            <ul className="mt-1 space-y-1 text-[12px] text-muted">
-              {latest.reasons.map((reason) => <li key={reason}>• {reason}</li>)}
-              {latest.error && <li className="text-icon-machine">• Erro: {latest.error}</li>}
-            </ul>
-          </div>
+          {latest.evaluation && latest.evaluation.length > 0
+            ? <DecisionTree evaluation={latest.evaluation} />
+            : (
+              <div className="mt-4">
+                <div className="text-[11px] uppercase tracking-[0.06em] text-muted">Motivos</div>
+                <ul className="mt-1 space-y-1 text-[12px] text-muted">
+                  {latest.reasons.map((reason) => <li key={reason}>• {reason}</li>)}
+                </ul>
+              </div>
+            )}
+          {latest.error && <p className="mt-3 text-[12px] text-icon-machine">Erro: {latest.error}</p>}
         </div>
       )}
 
@@ -399,7 +571,14 @@ function AnnotatedLivePreview({ record }: { record: LiveDecisionRecord }) {
         setPreviewError("");
         if (previousImageUrl) URL.revokeObjectURL(previousImageUrl);
       } catch (error) {
-        if (!disposed) setPreviewError(error instanceof Error ? error.message : "Preview do OBS indisponível.");
+        // A bare "HTTP 503" tells the operator nothing; the usual cause is simply
+        // that this machine is on the mock frame source or that OBS is not up.
+        const raw = error instanceof Error ? error.message : "";
+        if (!disposed) {
+          setPreviewError(/50\d|fetch|network/i.test(raw)
+            ? "Sem imagem do OBS. A máquina está em fonte de frames simulada, ou o OBS não está capturando."
+            : raw || "Preview do OBS indisponível.");
+        }
       } finally {
         if (!disposed) refreshTimer = window.setTimeout(() => void refreshPreview(), 750);
       }

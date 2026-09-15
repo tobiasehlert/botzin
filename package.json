@@ -11,6 +11,7 @@
     "dev": "tsx --env-file-if-exists=.env src/index.ts",
     "frontend:dev": "vite frontend",
     "frontend:build": "vite build frontend",
+    "annotations:dev": "tsx scripts/annotation-server.ts",
     "frontend:typecheck": "tsc -p frontend/tsconfig.json --noEmit",
     "migrate": "tsx --env-file-if-exists=.env src/database/migrate.ts",
     "prisma:generate": "prisma generate",
@@ -34,9 +35,11 @@
     "creatures:sync": "tsx --env-file-if-exists=.env src/learning/sync-tibia-game-catalog.ts --creatures-only",
     "creatures:train": "python scripts/train-creature-detector.py",
     "entities:dataset:clean": "python scripts/build-clean-entity-dataset.py",
+    "entities:dataset:human": "python scripts/build-clean-entity-dataset.py --human-annotations --force",
     "entities:validate:clean": "python scripts/validate-clean-entity-sources.py",
     "entities:train:clean": "python scripts/train-clean-entity-detector.py",
     "entities:resume:clean": "python scripts/resume-clean-entity-training.py",
+    "rules:seed:vocation": "tsx --env-file-if-exists=.env src/learning/seed-vocation-skill-rules-cli.ts",
     "items:sync": "tsx --env-file-if-exists=.env src/learning/sync-tibia-game-catalog.ts --items-only",
     "items:assets": "tsx --env-file-if-exists=.env src/knowledge/import-item-assets.ts",
     "user:create-admin": "tsx --env-file-if-exists=.env src/database/create-admin-user.ts",
@@ -45,7 +48,9 @@
     "test:watch": "vitest",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
-    "db:reset": "docker compose down -v && docker compose up -d"
+    "db:reset": "docker compose down -v && docker compose up -d",
+    "supervisor": "tsx --env-file-if-exists=.env scripts/supervisor.ts",
+    "vault:export": "tsx --env-file-if-exists=.env scripts/export-obsidian-vault.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

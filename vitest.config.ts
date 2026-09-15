@@ -1,4 +1,10 @@
+import { existsSync } from "node:fs";
 import { defineConfig } from "vitest/config";
+
+// The npm scripts pass --env-file-if-exists to tsx, but vitest is not run through
+// node's CLI, so the API tests would fall back to the default credentials in
+// tests/helpers/test-config.ts and fail to authenticate against a real MySQL.
+if (existsSync(".env")) process.loadEnvFile(".env");
 
 export default defineConfig({
   test: {

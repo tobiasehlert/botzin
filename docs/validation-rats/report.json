@@ -1,0 +1,31 @@
+{
+  "confidence": 0.25,
+  "iou": 0.5,
+  "class": "creature",
+  "before": {
+    "truePositive": 0,
+    "falsePositive": 0,
+    "falseNegative": 11,
+    "frames": 87,
+    "precision": 0,
+    "recall": 0.0,
+    "examples": [
+      "storage\\runs\\local-ot-balanced-20260914-002905\\fixed-evaluation\\before-frame-1789004906053.png",
+      "storage\\runs\\local-ot-balanced-20260914-002905\\fixed-evaluation\\before-frame-1789004910409.png",
+      "storage\\runs\\local-ot-balanced-20260914-002905\\fixed-evaluation\\before-frame-1789004915542.png"
+    ]
+  },
+  "after": {
+    "truePositive": 6,
+    "falsePositive": 9,
+    "falseNegative": 5,
+    "frames": 87,
+    "precision": 0.4,
+    "recall": 0.5454545454545454,
+    "examples": [
+      "storage\\runs\\local-ot-balanced-20260914-002905\\fixed-evaluation\\after-frame-1789004906053.png",
+      "storage\\runs\\local-ot-balanced-20260914-002905\\fixed-evaluation\\after-frame-1789004910409.png",
+      "storage\\runs\\local-ot-balanced-20260914-002905\\fixed-evaluation\\after-frame-1789004915542.png"
+    ]
+  }
+}

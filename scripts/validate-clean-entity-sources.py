@@ -12,7 +12,7 @@ import yaml
 from PIL import Image, UnidentifiedImageError
 
 
-EXPECTED_CLASSES = {"creature": 0, "npc": 1, "item": 2}
+EXPECTED_CLASSES = {"creature": 0, "npc": 1, "item": 2, "effect": 3, "missile": 4}
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,6 +20,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--knowledge", type=Path, default=Path("storage/knowledge"))
     parser.add_argument("--dataset", type=Path, default=Path("storage/knowledge/entity-training-clean"))
     parser.add_argument("--report", type=Path)
+    parser.add_argument(
+        "--allow-gameplay-frames",
+        action="store_true",
+        help="accept a dataset that includes human-annotated gameplay frames; the "
+             "report still records isolated=false",
+    )
     return parser.parse_args()
 
 
@@ -36,12 +42,27 @@ def main() -> None:
     items = validate_manifest_assets(
         knowledge / "item-assets", "item", errors, warnings, require_multiple_frames=False
     )
+    effects = summarize_numeric_assets(knowledge / "effect-assets", "effect", errors)
+    missiles = summarize_numeric_assets(knowledge / "missile-assets", "missile", errors)
     dataset_stats = validate_dataset(dataset, errors)
     manifest_path = dataset / "manifest.json"
     clean_manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
     sources = clean_manifest.get("sources", {})
-    if sources.get("gameplayVideos") != 0:
-        errors.append(f"dataset declares gameplayVideos={sources.get('gameplayVideos')!r}, expected 0")
+    gameplay_frames = sources.get("gameplayVideos")
+    if gameplay_frames != 0:
+        # Isolation is the default and the reason this pipeline is called clean.
+        # Turning it off has to be a deliberate act recorded in the report, never
+        # something a rebuild can do quietly.
+        if args.allow_gameplay_frames and isinstance(gameplay_frames, int) and gameplay_frames > 0:
+            warnings.append(
+                f"dataset includes {gameplay_frames} human-annotated gameplay frames; "
+                "clean-source isolation is off for this build"
+            )
+        else:
+            errors.append(
+                f"dataset declares gameplayVideos={gameplay_frames!r}, expected 0 "
+                "(pass --allow-gameplay-frames to accept human-annotated frames)"
+            )
     if sources.get("previousCheckpoints") != 0:
         errors.append(f"dataset declares previousCheckpoints={sources.get('previousCheckpoints')!r}, expected 0")
     if clean_manifest.get("classes") != EXPECTED_CLASSES:
@@ -72,6 +93,8 @@ def main() -> None:
         "isolated": sources.get("gameplayVideos") == 0 and sources.get("previousCheckpoints") == 0,
         "creatures": without_entries(creatures),
         "items": without_entries(items),
+        "effects": without_entries(effects),
+        "missiles": without_entries(missiles),
         "requiredCreatures": required_status,
         "dataset": dataset_stats,
         "errors": errors,
@@ -85,6 +108,8 @@ def main() -> None:
         f"[clean-validate] valid={report['valid']} isolated={report['isolated']} "
         f"creatures={creatures['assetCount']} creatureFrames={creatures['validFrames']} "
         f"items={items['assetCount']} itemFrames={items['validFrames']} "
+        f"effects={effects['assetCount']} effectFrames={effects['validFrames']} "
+        f"missiles={missiles['assetCount']} missileFrames={missiles['validFrames']} "
         f"errors={len(errors)} warnings={len(warnings)} report={report_path}"
     )
     if errors:
@@ -127,25 +152,12 @@ def validate_manifest_assets(
 
         valid_frames = 0
         for frame_path in files:
-            if not frame_path.is_file():
-                errors.append(f"{kind} frame missing: {frame_path}")
+            reason = invalid_frame_reason(frame_path)
+            if reason:
+                errors.append(f"{kind} frame {reason}: {frame_path}")
                 continue
-            try:
-                raw = frame_path.read_bytes()
-                digest = hashlib.sha256(raw).hexdigest()
-                with Image.open(frame_path) as image:
-                    image.load()
-                    rgba = image.convert("RGBA")
-                    if rgba.width <= 0 or rgba.height <= 0:
-                        errors.append(f"{kind} frame has invalid dimensions: {frame_path}")
-                        continue
-                    if rgba.getchannel("A").getbbox() is None:
-                        errors.append(f"{kind} frame is fully transparent: {frame_path}")
-                        continue
-                valid_frames += 1
-                frame_owners[digest].add(race)
-            except (OSError, UnidentifiedImageError, ValueError) as error:
-                errors.append(f"{kind} frame unreadable: {frame_path}: {error}")
+            valid_frames += 1
+            frame_owners[hashlib.sha256(frame_path.read_bytes()).hexdigest()].add(race)
         entries.append({"race": race, "name": name, "validFrames": valid_frames})
         if (index + 1) % 1000 == 0:
             print(f"[clean-validate] {kind} manifests {index + 1}/{len(manifest_paths)}")
@@ -172,6 +184,44 @@ def validate_manifest_assets(
         "sharedExactFrameGroups": len(shared_frame_groups),
         "entries": entries,
     }
+
+
+def summarize_numeric_assets(root: Path, kind: str, errors: list[str]) -> dict:
+    manifests = sorted(root.glob("*/manifest.json"))
+    valid_frames = 0
+    for manifest_path in manifests:
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            errors.append(f"{kind} manifest unreadable: {manifest_path}: {error}")
+            continue
+        for value in payload.get("files", []):
+            frame_path = manifest_path.parent / str(value)
+            reason = invalid_frame_reason(frame_path)
+            if reason:
+                errors.append(f"{kind} frame {reason}: {frame_path}")
+            else:
+                valid_frames += 1
+    if not manifests or not valid_frames:
+        errors.append(f"no valid {kind} assets found under {root}")
+    return {"assetCount": len(manifests), "validFrames": valid_frames}
+
+
+def invalid_frame_reason(frame_path: Path) -> str | None:
+    """None when the frame is a decodable, non-empty, not fully transparent image."""
+    if not frame_path.is_file():
+        return "missing"
+    try:
+        with Image.open(frame_path) as image:
+            image.load()
+            rgba = image.convert("RGBA")
+            if rgba.width <= 0 or rgba.height <= 0:
+                return "has invalid dimensions"
+            if rgba.getchannel("A").getbbox() is None:
+                return "is fully transparent"
+    except (OSError, UnidentifiedImageError, ValueError) as error:
+        return f"unreadable: {error}"
+    return None
 
 
 def validate_dataset(dataset: Path, errors: list[str]) -> dict:

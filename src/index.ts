@@ -2,17 +2,20 @@ import { loadRuntimeConfig } from "./config/runtime-config.js";
 import { applyMachineRuntimeConfig } from "./config/machine-runtime-config.js";
 import { InMemoryCoordinator } from "./coordination/in-memory-coordinator.js";
 import { RuleEngineStrategy, loadoutFromSnapshot } from "./decision/rule-engine-strategy.js";
+import { evaluationOf } from "./decision/rule-engine.js";
 import { isEnvironmentReady } from "./environment/check-status.js";
 import { ObsShareInspector } from "./environment/obs-share-inspector.js";
 import { RuntimeEnvironmentChecker } from "./environment/runtime-environment-checker.js";
 import { WindowsProcessInspector } from "./environment/windows-process-inspector.js";
 import { LocalNetworkInspector } from "./networking/local-network-inspector.js";
 import { NetworkProfileBuilder } from "./networking/network-profile-builder.js";
+import { createInputExecutor } from "./execution/windows-input-executor.js";
 import { createEntityDetector } from "./perception/detector-factory.js";
 import { createFrameSource } from "./perception/frame-source-factory.js";
 import { PerceptionPipeline } from "./perception/perception-pipeline.js";
-import { CreatureSpeciesClassifier } from "./perception/creature-species-classifier.js";
 import { resolve } from "node:path";
+import { mkdir, rename, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { LiveDecisionStore, decisionFrom, errorDecision } from "./decision/live-decision-store.js";
 import { createMysqlPool } from "./database/mysql-pool.js";
 import { ConfigurationRepository } from "./database/configuration-repository.js";
@@ -37,9 +40,8 @@ async function main(): Promise<void> {
   );
   const frameSource = createFrameSource(config);
   const detector = createEntityDetector(config);
-  // The classifier names each creature so the rules can look it up in the
-  // catalog; it turns itself off when no model file is installed.
-  const pipeline = new PerceptionPipeline(frameSource, detector, new CreatureSpeciesClassifier());
+  const pipeline = new PerceptionPipeline(frameSource, detector);
+  const executor = createInputExecutor(config);
   const coordinator = new InMemoryCoordinator();
   // ponytail: the loadout is read once at startup; restart the bot after
   // changing the assignment, spells, hotkeys or the run snapshot in the panel.
@@ -51,6 +53,8 @@ async function main(): Promise<void> {
     modes: config.decisionRuleModes
   });
   const decisionStore = new LiveDecisionStore(resolve(config.decisionLogPath));
+  const monitorPath = process.env.BOTZIN_MONITOR_PATH ? resolve(process.env.BOTZIN_MONITOR_PATH) : null;
+  if (monitorPath) await mkdir(dirname(monitorPath), { recursive: true });
   const runCollector = new RuntimeRunCollector(
     repository, config.nodeId, resolve(config.runCaptureDir), config.runFrameIntervalMs
   );
@@ -92,10 +96,27 @@ async function main(): Promise<void> {
       const latest = strategy.lastDecision();
       const decision = decisionFrom(event, strategy.name, commands, {
         decision: latest?.decision.accepted?.source,
-        reasons: latest?.decision.reasons
+        reasons: latest?.decision.reasons,
+        evaluation: latest ? evaluationOf(latest.decision) : undefined
       });
       await decisionStore.append(decision);
+      if (monitorPath) {
+        try {
+          const temporary = `${monitorPath}.${process.pid}.tmp`;
+          await writeFile(temporary, JSON.stringify({
+            decision, capturedAt: perception.capturedAt,
+            image: Buffer.from(perception.frame.data).toString("base64"),
+            executionMode: config.decisionMode
+          }));
+          await rename(temporary, monitorPath);
+        } catch (error) {
+          console.warn("Monitor visual indisponível:", error instanceof Error ? error.message : String(error));
+        }
+      }
       runCollector.enqueue(perception, decision);
+      if (config.decisionMode === "execute") {
+        for (const command of commands) await executor.execute(command);
+      }
       console.log(JSON.stringify({
         type: "live-decision",
         observedAt: decision.observedAt,
@@ -113,7 +134,8 @@ async function main(): Promise<void> {
       // while OBS or a remote machine is unavailable.
       await delay(1_000);
     }
-    await yieldToEventLoop();
+    // ponytail: ~6 cycles/s is plenty for a 0.5 s action step and keeps live-decisions.jsonl sane.
+    await delay(150);
   }
   await runCollector.flush();
   await pool.end();

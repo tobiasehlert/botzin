@@ -5,6 +5,17 @@ import type { PerceptionEvent } from "../coordination/perception-event.js";
 import type { GameEntity, GameEntityKind } from "../core/game-entity.js";
 import type { InputCommand } from "../core/input-command.js";
 
+/** One rule's verdict in a cycle, kept structured so the panel can draw the tree. */
+export interface EvaluatedProposal {
+  readonly source: string;
+  readonly priority: number;
+  readonly band: string;
+  readonly action: string;
+  readonly reason: string;
+  /** Null on the proposal that won; the losing reason otherwise. */
+  readonly rejectedBecause: string | null;
+}
+
 export interface LiveDecisionRecord {
   readonly id: string;
   readonly observedAt: string;
@@ -14,6 +25,12 @@ export interface LiveDecisionRecord {
   readonly status: "observed" | "suggested" | "error";
   readonly decision: string;
   readonly reasons: readonly string[];
+  /**
+   * Absent on records written before the tree existed and on non-rule strategies,
+   * so the panel falls back to the flat `reasons` list rather than showing an
+   * empty tree.
+   */
+  readonly evaluation?: readonly EvaluatedProposal[];
   readonly perceptionConfidence: number | null;
   readonly frame: { readonly id: string; readonly width: number; readonly height: number } | null;
   readonly entities: readonly GameEntity[];
@@ -44,7 +61,11 @@ export function decisionFrom(
   strategy: string,
   commands: readonly InputCommand[],
   /** Filled by rule based strategies so every record explains its own decision. */
-  detail?: { readonly decision?: string; readonly reasons?: readonly string[] }
+  detail?: {
+    readonly decision?: string;
+    readonly reasons?: readonly string[];
+    readonly evaluation?: readonly EvaluatedProposal[];
+  }
 ): LiveDecisionRecord {
   const entityCounts = { ...EMPTY_COUNTS };
   // Entities can carry a kind from an out-of-date labels file; counting it under
@@ -65,6 +86,7 @@ export function decisionFrom(
     reasons: detail?.reasons ?? (hasCommands
       ? ["A estratégia produziu comandos candidatos.", "Execução automática não está conectada a este monitor."]
       : ["Estratégia passiva em modo de observação.", "Nenhum comando foi produzido neste ciclo."]),
+    ...(detail?.evaluation ? { evaluation: detail.evaluation } : {}),
     perceptionConfidence: confidence,
     frame: event.frame,
     entities: event.entities,

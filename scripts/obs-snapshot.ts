@@ -1,0 +1,13 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import OBSWebSocket from "obs-websocket-js";
+const cfg = JSON.parse(readFileSync(join(process.env.APPDATA ?? "", "obs-studio/plugin_config/obs-websocket/config.json"), "utf8"));
+const obs = new OBSWebSocket();
+await obs.connect("ws://127.0.0.1:4455", cfg.server_password);
+const { sceneItems } = await obs.call("GetSceneItemList", { sceneName: "Botzin" });
+const item = sceneItems.find((s) => s.sourceName === "Tibia Preview")!;
+const t = await obs.call("GetSceneItemTransform", { sceneName: "Botzin", sceneItemId: Number(item.sceneItemId) });
+console.log(JSON.stringify({ sceneItemId: item.sceneItemId, transform: t.sceneItemTransform }));
+const shot = await obs.call("GetSourceScreenshot", { sourceName: "Tibia Preview", imageFormat: "png" });
+writeFileSync(process.argv[2], Buffer.from(String(shot.imageData).split(",")[1], "base64"));
+await obs.disconnect();

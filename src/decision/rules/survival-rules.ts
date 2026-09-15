@@ -24,23 +24,30 @@ export const DEFAULT_SURVIVAL_THRESHOLDS: SurvivalThresholds = {
   manaSkillName: null
 };
 
-/** Reads the `survival` block of the same run snapshot used by the refill policy. */
-export function survivalThresholdsFrom(value: string | null): SurvivalThresholds {
+/**
+ * Reads the `survival` block of the same run snapshot used by the refill policy.
+ * `defaults` is the vocation baseline, so an absent field falls back to what the
+ * vocation asks for rather than to a vocation-neutral number.
+ */
+export function survivalThresholdsFrom(
+  value: string | null,
+  defaults: SurvivalThresholds = DEFAULT_SURVIVAL_THRESHOLDS
+): SurvivalThresholds {
   try {
     const snapshot = JSON.parse(value ?? "") as Record<string, unknown>;
     const survival = snapshot.survival as Record<string, unknown> | undefined;
-    if (!survival) return DEFAULT_SURVIVAL_THRESHOLDS;
+    if (!survival) return defaults;
     return {
-      emergencyHealthPercent: percent(survival.emergencyHealthPercent) ?? DEFAULT_SURVIVAL_THRESHOLDS.emergencyHealthPercent,
-      healHealthPercent: percent(survival.healHealthPercent) ?? DEFAULT_SURVIVAL_THRESHOLDS.healHealthPercent,
-      manaPotionPercent: percent(survival.manaPotionPercent) ?? DEFAULT_SURVIVAL_THRESHOLDS.manaPotionPercent,
-      maxReadingAgeMs: positive(survival.maxReadingAgeMs) ?? DEFAULT_SURVIVAL_THRESHOLDS.maxReadingAgeMs,
-      emergencyHealSkillName: name(survival.emergencyHealSkillName),
-      healSkillName: name(survival.healSkillName),
-      manaSkillName: name(survival.manaSkillName)
+      emergencyHealthPercent: percent(survival.emergencyHealthPercent) ?? defaults.emergencyHealthPercent,
+      healHealthPercent: percent(survival.healHealthPercent) ?? defaults.healHealthPercent,
+      manaPotionPercent: percent(survival.manaPotionPercent) ?? defaults.manaPotionPercent,
+      maxReadingAgeMs: positive(survival.maxReadingAgeMs) ?? defaults.maxReadingAgeMs,
+      emergencyHealSkillName: name(survival.emergencyHealSkillName) ?? defaults.emergencyHealSkillName,
+      healSkillName: name(survival.healSkillName) ?? defaults.healSkillName,
+      manaSkillName: name(survival.manaSkillName) ?? defaults.manaSkillName
     };
   } catch {
-    return DEFAULT_SURVIVAL_THRESHOLDS;
+    return defaults;
   }
 }
 

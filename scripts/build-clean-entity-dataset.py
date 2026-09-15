@@ -24,7 +24,19 @@ import yaml
 from PIL import Image, ImageDraw, ImageEnhance
 
 
-CLASS_IDS = {"creature": 0, "npc": 1, "item": 2}
+CLASS_IDS = {"creature": 0, "npc": 1, "item": 2, "effect": 3, "missile": 4}
+
+# The annotator works with 16 classes; only these five exist in the detector.
+# UI panels, the own character, other players and corpses are annotated but have
+# no target class here, so their boxes are dropped rather than guessed into one.
+HUMAN_CLASS_MAP = {
+    "creature_alive": "creature",
+    "npc": "npc",
+    "item": "item",
+    "effect": "effect",
+    "missile": "missile",
+}
+HUMAN_MASK_CLASS = "ignored_region"
 TEMPLATE_REGIONS = {
     (255, 255, 0): "head",
     (255, 0, 0): "body",
@@ -58,11 +70,38 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-size", type=int, default=320)
     parser.add_argument("--seed", type=int, default=20260810)
     parser.add_argument("--force", action="store_true", help="replace an existing generated dataset")
+    parser.add_argument(
+        "--human-annotations",
+        action="store_true",
+        help="fold the reviewed human annotations into the dataset; frames taken from "
+             "gameplay video are counted in the manifest and break clean-source isolation",
+    )
+    parser.add_argument("--self-check", action="store_true", help="run the box geometry asserts and exit")
     return parser.parse_args()
+
+
+def self_check() -> None:
+    """Box geometry is the one place a silent error trains a model on wrong labels."""
+    # 640x320 frame letterboxed into 320x320: horizontal untouched, vertical halved
+    # and pushed down by the 80px pad.
+    assert letterbox_box({"x": 0.5, "y": 0.5, "width": 0.25, "height": 0.5}, (320, 160), (0, 80), 320) \
+        == (0.5, 0.5, 0.25, 0.25)
+    corner = letterbox_box({"x": 0.1, "y": 0.1, "width": 0.2, "height": 0.2}, (320, 160), (0, 80), 320)
+    assert corner is not None and abs(corner[1] - 0.3) < 1e-9 and abs(corner[3] - 0.1) < 1e-9
+    # An already square frame needs no correction at all.
+    assert letterbox_box({"x": 0.5, "y": 0.5, "width": 0.25, "height": 0.5}, (320, 320), (0, 0), 320) \
+        == (0.5, 0.5, 0.25, 0.5)
+    # A sprite clipped to nothing by the padding is dropped, not emitted as zero.
+    assert letterbox_box({"x": 0.0, "y": 0.5, "width": 0.0005, "height": 0.5}, (320, 160), (0, 80), 320) is None
+    assert set(HUMAN_CLASS_MAP.values()) <= set(CLASS_IDS)
+    print("[clean-dataset] self-check ok")
 
 
 def main() -> None:
     args = parse_args()
+    if args.self_check:
+        self_check()
+        return
     if args.image_size < 160:
         raise ValueError("--image-size must be at least 160")
     if min(args.train_samples, args.val_samples, args.train_negatives, args.val_negatives) < 0:
@@ -77,11 +116,23 @@ def main() -> None:
 
     creatures = load_manifest_frames(knowledge / "creature-assets")
     items = load_manifest_frames(knowledge / "item-assets")
+    effects = load_manifest_frames(knowledge / "effect-assets")
+    missiles = load_manifest_frames(knowledge / "missile-assets")
     outfits = load_outfit_frames(knowledge)
-    if not creatures or not items or not outfits:
+    if not creatures or not items or not effects or not missiles or not outfits:
         raise RuntimeError(
-            f"Missing assets: creatures={len(creatures)} items={len(items)} npcOutfitFrames={len(outfits)}"
+            f"Missing assets: creatures={len(creatures)} items={len(items)} effects={len(effects)} "
+            f"missiles={len(missiles)} npcOutfitFrames={len(outfits)}"
         )
+
+    human_records = load_human_records(knowledge / "human-annotations") if args.human_annotations else []
+    # Every fifth record validates, so the split is stable across rebuilds and the
+    # same frame never lands in train and val at once.
+    human_split = {
+        "val": [record for index, record in enumerate(human_records) if index % 5 == 0],
+        "train": [record for index, record in enumerate(human_records) if index % 5 != 0],
+    }
+    human_written = {"train": 0, "val": 0}
 
     rng = random.Random(args.seed)
     for split, positives, negatives in (
@@ -94,8 +145,15 @@ def main() -> None:
         label_dir.mkdir(parents=True, exist_ok=True)
         build_split(
             rng, image_dir, label_dir, positives, negatives, args.image_size,
-            creatures, outfits, items,
+            creatures, outfits, items, effects, missiles,
         )
+        human_written[split] = add_human_samples(
+            human_split[split], image_dir, label_dir, args.image_size, "human"
+        )
+
+    gameplay_frames = sum(
+        1 for record in human_records if "visual-training" in record["sourcePath"].as_posix()
+    )
 
     data = {
         "path": str(output),
@@ -113,10 +171,16 @@ def main() -> None:
         "imageSize": args.image_size,
         "classes": CLASS_IDS,
         "sources": {
-            "gameplayVideos": 0,
+            # Counted, not asserted: folding in human annotations of gameplay
+            # frames is what breaks isolation, and the validator must be able to
+            # see it rather than take the builder's word for it.
+            "gameplayVideos": gameplay_frames,
             "previousCheckpoints": 0,
+            "humanAnnotatedFrames": human_written["train"] + human_written["val"],
             "creatureSpecies": len(creatures),
             "itemAssets": len(items),
+            "effectAssets": len(effects),
+            "missileAssets": len(missiles),
             "npcOutfitFrames": len(outfits),
         },
         "samples": {
@@ -124,15 +188,114 @@ def main() -> None:
             "trainNegative": args.train_negatives,
             "valPositive": args.val_samples,
             "valNegative": args.val_negatives,
+            "trainHuman": human_written["train"],
+            "valHuman": human_written["val"],
         },
         "itemContexts": ["ground", "equipment", "backpack", "hotkey"],
     }
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(
         f"[clean-dataset] ready path={output} creatures={len(creatures)} "
-        f"npcFrames={len(outfits)} items={len(items)} "
-        f"train={args.train_samples + args.train_negatives} val={args.val_samples + args.val_negatives}"
+        f"npcFrames={len(outfits)} items={len(items)} effects={len(effects)} missiles={len(missiles)} "
+        f"human={human_written['train'] + human_written['val']} gameplayFrames={gameplay_frames} "
+        f"train={args.train_samples + args.train_negatives + human_written['train']} "
+        f"val={args.val_samples + args.val_negatives + human_written['val']}"
     )
+
+
+def load_human_records(annotations: Path) -> list[dict]:
+    """Reviewed, non-ignored annotation records that still have a readable frame."""
+    classes_path = annotations / "classes.json"
+    if not classes_path.is_file():
+        return []
+    classes = json.loads(classes_path.read_text(encoding="utf-8"))
+    root = annotations.parents[2]
+    records = []
+    for path in sorted((annotations / "records").glob("*.json")):
+        record = json.loads(path.read_text(encoding="utf-8"))
+        if not record.get("reviewed") or record.get("ignored"):
+            continue
+        source = root / str(record.get("source", "")).replace("\\", "/")
+        if not source.is_file():
+            continue
+        record["sourcePath"] = source
+        record["classNames"] = classes
+        records.append(record)
+    return records
+
+
+def add_human_samples(
+    records: list[dict], image_dir: Path, label_dir: Path, size: int, stem_prefix: str
+) -> int:
+    """
+    Writes the annotated real frames letterboxed into the same square canvas the
+    synthetic samples use. The runtime letterboxes at inference too, so stretching
+    them to a square here would train on geometry production never sees.
+    """
+    written = 0
+    for index, record in enumerate(records):
+        classes = record["classNames"]
+        with Image.open(record["sourcePath"]) as opened:
+            frame = opened.convert("RGB")
+
+        draw = ImageDraw.Draw(frame)
+        width, height = frame.size
+        for box in record.get("boxes", []):
+            if classes[int(box["classId"])] != HUMAN_MASK_CLASS:
+                continue
+            draw.rectangle(
+                (
+                    (box["x"] - box["width"] / 2) * width,
+                    (box["y"] - box["height"] / 2) * height,
+                    (box["x"] + box["width"] / 2) * width,
+                    (box["y"] + box["height"] / 2) * height,
+                ),
+                fill="black",
+            )
+
+        scale = size / max(width, height)
+        scaled = (max(1, round(width * scale)), max(1, round(height * scale)))
+        canvas = Image.new("RGB", (size, size), (0, 0, 0))
+        offset = ((size - scaled[0]) // 2, (size - scaled[1]) // 2)
+        canvas.paste(frame.resize(scaled, Image.LANCZOS), offset)
+
+        lines = []
+        for box in record.get("boxes", []):
+            target = HUMAN_CLASS_MAP.get(classes[int(box["classId"])])
+            if target is None:
+                continue
+            placed = letterbox_box(box, scaled, offset, size)
+            if placed is None:
+                continue
+            x, y, box_width, box_height = placed
+            lines.append(
+                f"{CLASS_IDS[target]} {x:.6f} {y:.6f} {box_width:.6f} {box_height:.6f}"
+            )
+        if not lines:
+            continue
+
+        stem = f"{stem_prefix}-{index:06d}"
+        canvas.save(image_dir / f"{stem}.jpg", quality=95)
+        (label_dir / f"{stem}.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        written += 1
+    return written
+
+
+def letterbox_box(
+    box: dict, scaled: tuple[int, int], offset: tuple[int, int], size: int
+) -> tuple[float, float, float, float] | None:
+    """Normalised box in the original frame → normalised box in the padded canvas."""
+    x = (box["x"] * scaled[0] + offset[0]) / size
+    y = (box["y"] * scaled[1] + offset[1]) / size
+    width = box["width"] * scaled[0] / size
+    height = box["height"] * scaled[1] / size
+    left, right = max(0.0, x - width / 2), min(1.0, x + width / 2)
+    top, bottom = max(0.0, y - height / 2), min(1.0, y + height / 2)
+    # The validator rejects zero-sized and out-of-range boxes, so a sprite clipped
+    # away by the padding is dropped here instead of failing the whole run later.
+    if right - left <= 0.001 or bottom - top <= 0.001:
+        return None
+    return (left + right) / 2, (top + bottom) / 2, right - left, bottom - top
 
 
 def load_manifest_frames(root: Path) -> list[list[Path]]:
@@ -193,6 +356,8 @@ def build_split(
     creatures: list[list[Path]],
     outfits: list[OutfitFrame],
     items: list[list[Path]],
+    effects: list[list[Path]],
+    missiles: list[list[Path]],
 ) -> None:
     total = positives + negatives
     for sample_index in range(total):
@@ -200,9 +365,10 @@ def build_split(
         canvas, viewport, ui_slots = procedural_scene(rng, size)
         placements: list[Placement] = []
         if sample_index < positives:
-            required = ("creature", "npc", "item")[sample_index % 3]
+            classes = ("creature", "npc", "item", "effect", "missile")
+            required = classes[sample_index % len(classes)]
             entity_classes = [required]
-            entity_classes.extend(rng.choices(("creature", "npc", "item"), weights=(4, 2, 5), k=rng.randint(1, 5)))
+            entity_classes.extend(rng.choices(classes, weights=(4, 2, 5, 2, 2), k=rng.randint(1, 5)))
             for class_name in entity_classes:
                 if class_name == "creature":
                     sprite = load_rgba(rng.choice(rng.choice(creatures)))
@@ -210,13 +376,19 @@ def build_split(
                 elif class_name == "npc":
                     sprite = render_outfit(rng.choice(outfits), rng)
                     placements.append(Placement(class_name, sprite, viewport, (9, 32)))
-                else:
+                elif class_name == "item":
                     sprite = load_rgba(rng.choice(rng.choice(items)))
                     if ui_slots and rng.random() < 0.68:
                         slot = rng.choice(ui_slots)
                         placements.append(Placement(class_name, sprite, slot, (10, 22)))
                     else:
                         placements.append(Placement(class_name, sprite, viewport, (8, 20)))
+                elif class_name == "effect":
+                    sprite = load_rgba(rng.choice(rng.choice(effects)))
+                    placements.append(Placement(class_name, sprite, viewport, (10, 38)))
+                else:
+                    sprite = load_rgba(rng.choice(rng.choice(missiles)))
+                    placements.append(Placement(class_name, sprite, viewport, (8, 28)))
 
         labels = paste_entities(canvas, placements, rng)
         canvas.save(image_dir / f"{stem}.jpg", quality=92, optimize=True)

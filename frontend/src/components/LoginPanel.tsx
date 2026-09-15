@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { AlertCircle, Bot, LoaderCircle, LockKeyhole, ShieldCheck, UserRound } from "lucide-react";
+import { AlertCircle, Bot, LoaderCircle, LockKeyhole, UserRound } from "lucide-react";
 import { Field, Input } from "./Field.tsx";
 import { Button } from "./ui.tsx";
 
@@ -9,8 +9,7 @@ export function LoginPanel({ onLogin }: Props) {
   async function handleSubmit(e: FormEvent<HTMLFormElement>) { e.preventDefault(); const data = new FormData(e.currentTarget); setBusy(true); setError(""); try { await onLogin(String(data.get("username")), String(data.get("password"))); } catch (err) { setError(err instanceof Error ? err.message : "Erro ao entrar"); } finally { setBusy(false); } }
   return <div className="login-layout">
     <aside className="login-story">
-      <div><span className="login-kicker"><ShieldCheck size={15} /> Ambiente seguro</span><h1>Automação inteligente.<br /><span>Controle absoluto.</span></h1><p>Centralize operações, aprendizado e monitoramento do seu ecossistema em um só lugar.</p></div>
-      <div className="login-status"><i /><span><strong>Sistema operacional</strong><small>Todos os serviços respondendo normalmente</small></span></div>
+      <div><h1>Automação inteligente.<br /><span>Controle absoluto.</span></h1><p>Centralize operações, aprendizado e monitoramento do seu ecossistema em um só lugar.</p></div>
     </aside>
     <main className="login-panel">
       <form onSubmit={handleSubmit} className="login-card">
