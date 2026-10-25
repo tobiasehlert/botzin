@@ -18,7 +18,7 @@ if (syncCreatures) {
     "TIBIA_CREATURE_CATALOG",
     "TIBIA_CREATURE_CATALOG_GENERATED_AT",
     "TIBIA_CREATURE_CATALOG_SOURCE",
-    "https://api.tibiadata.com/v4/creatures",
+    "https://api.tibiadata.com/v5/creatures",
     creatures
   );
   console.log(`Saved ${creatures.length} official Tibia creatures.`);

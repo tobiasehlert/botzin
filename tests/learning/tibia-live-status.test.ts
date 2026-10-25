@@ -12,5 +12,18 @@ describe("Tibia live status", () => {
     });
     await service.get();
     expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenNthCalledWith(1, "https://api.tibiadata.com/v5/creatures", expect.any(Object));
+    expect(fetcher).toHaveBeenNthCalledWith(2, "https://api.tibiadata.com/v5/boostablebosses", expect.any(Object));
+  });
+
+  it("includes TibiaData v5 HTTP statuses when a boost endpoint fails", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(new Response(null, { status: 502 }));
+    const service = new TibiaLiveStatusService(fetcher);
+
+    await expect(service.get()).rejects.toThrow(
+      "Could not refresh official Tibia boosts: creatures HTTP 404, boostablebosses HTTP 502."
+    );
   });
 });

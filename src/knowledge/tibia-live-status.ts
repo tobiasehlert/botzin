@@ -11,8 +11,8 @@ export interface TibiaLiveStatus {
   readonly marketRequiresWorldSnapshot: true;
 }
 
-const CREATURES_URL = "https://api.tibiadata.com/v4/creatures";
-const BOSSES_URL = "https://api.tibiadata.com/v4/boostablebosses";
+const CREATURES_URL = "https://api.tibiadata.com/v5/creatures";
+const BOSSES_URL = "https://api.tibiadata.com/v5/boostablebosses";
 const CACHE_MS = 5 * 60_000;
 
 export class TibiaLiveStatusService {
@@ -26,7 +26,13 @@ export class TibiaLiveStatusService {
       this.fetcher(CREATURES_URL, { headers: { "user-agent": "botzin-live-status/0.1" } }),
       this.fetcher(BOSSES_URL, { headers: { "user-agent": "botzin-live-status/0.1" } })
     ]);
-    if (!creaturesResponse.ok || !bossesResponse.ok) throw new Error("Could not refresh official Tibia boosts.");
+    const failedEndpoints = [
+      !creaturesResponse.ok ? `creatures HTTP ${creaturesResponse.status}` : null,
+      !bossesResponse.ok ? `boostablebosses HTTP ${bossesResponse.status}` : null
+    ].filter((failure): failure is string => failure !== null);
+    if (failedEndpoints.length) {
+      throw new Error(`Could not refresh official Tibia boosts: ${failedEndpoints.join(", ")}.`);
+    }
     const creatures = object(await creaturesResponse.json());
     const bosses = object(await bossesResponse.json());
     const creatureGroup = object(creatures.creatures);

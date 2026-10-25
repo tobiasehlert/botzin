@@ -173,7 +173,7 @@ Depois abra `Configuração atual -> Skills` para consultar magia, palavras, man
 
 O sistema também mantém dois catálogos locais pesquisáveis:
 
-- 718 criaturas da [biblioteca oficial do Tibia via TibiaData](https://api.tibiadata.com/v4/creatures), com HP,
+- 718 criaturas da [biblioteca oficial do Tibia via TibiaData](https://api.tibiadata.com/v5/creatures), com HP,
   XP, descrição, comportamento, imunidades, resistências, fraquezas, condições especiais e loot;
 - 6.465 itens básicos da [API aberta ByteWizards/TibiaWiki](https://tibiadata.bytewizards.de/), com nome,
   categoria, tipo, classe, link de origem e data da fonte. O Tibia não oferece uma biblioteca oficial equivalente

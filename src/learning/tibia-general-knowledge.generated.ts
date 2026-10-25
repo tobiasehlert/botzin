@@ -238000,7 +238000,7 @@ export const TIBIA_GENERAL_KNOWLEDGE = [
     "content": "Criatura e boss destacados são informações diárias. XP boosts da Store e bônus de eventos têm regras e duração próprias. A IA deve verificar o estado atual e o horário do server save antes de planejar com qualquer boost.",
     "metadata": {
       "refresh": "daily",
-      "officialStatusEndpoint": "https://api.tibiadata.com/v4/boostablebosses"
+      "officialStatusEndpoint": "https://api.tibiadata.com/v5/boostablebosses"
     },
     "sourceUrl": "https://www.tibia.com/news/?subtopic=newsarchive",
     "sourceUpdatedAt": null,

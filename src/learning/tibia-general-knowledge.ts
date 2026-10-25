@@ -120,7 +120,7 @@ export const OFFICIAL_MECHANIC_KNOWLEDGE: readonly TibiaKnowledgeEntry[] = [
     key: "official:mechanic:boosts", domain: "mechanic", name: "Boosts, criatura e boss do dia",
     summary: "Boosts e destaques diários expiram e precisam ser consultados novamente.",
     content: "Criatura e boss destacados são informações diárias. XP boosts da Store e bônus de eventos têm regras e duração próprias. A IA deve verificar o estado atual e o horário do server save antes de planejar com qualquer boost.",
-    metadata: { refresh: "daily", officialStatusEndpoint: "https://api.tibiadata.com/v4/boostablebosses" },
+    metadata: { refresh: "daily", officialStatusEndpoint: "https://api.tibiadata.com/v5/boostablebosses" },
     sourceUrl: "https://www.tibia.com/news/?subtopic=newsarchive", sourceUpdatedAt: null,
     trust: "official", volatile: true
   },

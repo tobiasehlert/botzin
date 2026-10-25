@@ -84,7 +84,7 @@ interface ItemPageResponse {
   items?: unknown;
 }
 
-const OFFICIAL_CREATURES_URL = "https://api.tibiadata.com/v4/creatures";
+const OFFICIAL_CREATURES_URL = "https://api.tibiadata.com/v5/creatures";
 const ITEM_API_URL = "https://tibiadata.bytewizards.de/api/v1/items";
 const COMMUNITY_CREATURE_API_URL = "https://tibiadata.bytewizards.de/api/v1/creatures";
 
